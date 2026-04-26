@@ -10,11 +10,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { uploadDocument, processExtraction, getExtractionStatus, saveConfirmedData } from "@/lib/dashboard.functions";
+import { uploadDocument, processExtraction, getExtractionStatus, saveConfirmedData, replaceDocument } from "@/lib/dashboard.functions";
 import { withAuth } from "@/lib/server-call";
 import type { ExtractedData, ExtractedVisit, Circumferences, BodyComposition, DexaSegment, DexaSegmentKey } from "@/lib/types";
 
-type Step = "upload" | "processing" | "review" | "saving" | "error";
+type Step = "upload" | "duplicate" | "processing" | "review" | "saving" | "error";
+
+interface DuplicateInfo {
+  documentId: string;
+  originalName: string;
+  uploadedAt: string;
+  status: string;
+}
 
 const SEGMENT_LABELS: Record<string, string> = {
   right_arm: "Braccio destro",
