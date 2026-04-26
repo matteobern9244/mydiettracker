@@ -28,7 +28,7 @@ function LoginPage() {
   // Se sei già loggato, redirect immediato
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      navigate({ to: search.redirect || "/" });
+      navigate({ to: search.redirect || "/", replace: true });
     }
   }, [isAuthenticated, loading, navigate, search.redirect]);
 
