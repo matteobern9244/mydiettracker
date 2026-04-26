@@ -407,7 +407,29 @@ function estimateProgress(elapsedMs: number): number {
   return Math.min(0.95, raw);
 }
 
-function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
+// Cooldown anti-doppio-click sul retry, persistito in localStorage (sopravvive a reload).
+const RETRY_COOLDOWN_MS = 90_000; // 90s
+const RETRY_LS_KEY = "doc_retry_cooldowns_v1";
+
+function readCooldowns(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(RETRY_LS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeCooldowns(map: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RETRY_LS_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
+
   const qc = useQueryClient();
   const getDocUrl = useServerFn(getDocumentUrl);
   const processFn = useServerFn(processExtraction);
