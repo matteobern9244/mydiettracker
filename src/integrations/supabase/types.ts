@@ -14,7 +14,343 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      blood_tests: {
+        Row: {
+          alt: number | null
+          ast: number | null
+          created_at: string
+          gamma_gt: number | null
+          glucose: number | null
+          hdl: number | null
+          hemoglobin: number | null
+          id: string
+          ldl: number | null
+          notes: string | null
+          test_date: string
+          total_cholesterol: number | null
+          triglycerides: number | null
+          visit_id: string | null
+        }
+        Insert: {
+          alt?: number | null
+          ast?: number | null
+          created_at?: string
+          gamma_gt?: number | null
+          glucose?: number | null
+          hdl?: number | null
+          hemoglobin?: number | null
+          id?: string
+          ldl?: number | null
+          notes?: string | null
+          test_date: string
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          visit_id?: string | null
+        }
+        Update: {
+          alt?: number | null
+          ast?: number | null
+          created_at?: string
+          gamma_gt?: number | null
+          glucose?: number | null
+          hdl?: number | null
+          hemoglobin?: number | null
+          id?: string
+          ldl?: number | null
+          notes?: string | null
+          test_date?: string
+          total_cholesterol?: number | null
+          triglycerides?: number | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blood_tests_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      body_composition: {
+        Row: {
+          bmi: number | null
+          bone_mass_kg: number | null
+          created_at: string
+          fat_mass_pct: number | null
+          hydration_pct: number | null
+          id: string
+          lean_mass_kg: number | null
+          metabolic_age: number | null
+          visceral_fat: number | null
+          visit_id: string
+        }
+        Insert: {
+          bmi?: number | null
+          bone_mass_kg?: number | null
+          created_at?: string
+          fat_mass_pct?: number | null
+          hydration_pct?: number | null
+          id?: string
+          lean_mass_kg?: number | null
+          metabolic_age?: number | null
+          visceral_fat?: number | null
+          visit_id: string
+        }
+        Update: {
+          bmi?: number | null
+          bone_mass_kg?: number | null
+          created_at?: string
+          fat_mass_pct?: number | null
+          hydration_pct?: number | null
+          id?: string
+          lean_mass_kg?: number | null
+          metabolic_age?: number | null
+          visceral_fat?: number | null
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_composition_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: true
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      circumferences: {
+        Row: {
+          abdomen_cm: number | null
+          arm_cm: number | null
+          chest_cm: number | null
+          created_at: string
+          forearm_cm: number | null
+          hips_cm: number | null
+          id: string
+          neck_cm: number | null
+          thigh_cm: number | null
+          visit_id: string
+          waist_cm: number | null
+          wrist_cm: number | null
+        }
+        Insert: {
+          abdomen_cm?: number | null
+          arm_cm?: number | null
+          chest_cm?: number | null
+          created_at?: string
+          forearm_cm?: number | null
+          hips_cm?: number | null
+          id?: string
+          neck_cm?: number | null
+          thigh_cm?: number | null
+          visit_id: string
+          waist_cm?: number | null
+          wrist_cm?: number | null
+        }
+        Update: {
+          abdomen_cm?: number | null
+          arm_cm?: number | null
+          chest_cm?: number | null
+          created_at?: string
+          forearm_cm?: number | null
+          hips_cm?: number | null
+          id?: string
+          neck_cm?: number | null
+          thigh_cm?: number | null
+          visit_id?: string
+          waist_cm?: number | null
+          wrist_cm?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "circumferences_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: true
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dexa_segments: {
+        Row: {
+          created_at: string
+          fat_mass_pct: number | null
+          id: string
+          lean_mass_kg: number | null
+          segment: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          fat_mass_pct?: number | null
+          id?: string
+          lean_mass_kg?: number | null
+          segment: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          fat_mass_pct?: number | null
+          id?: string
+          lean_mass_kg?: number | null
+          segment?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dexa_segments_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          extraction_raw: Json | null
+          extraction_status: string
+          id: string
+          mime_type: string | null
+          original_name: string
+          size_bytes: number | null
+          storage_path: string
+          uploaded_at: string
+        }
+        Insert: {
+          extraction_raw?: Json | null
+          extraction_status?: string
+          id?: string
+          mime_type?: string | null
+          original_name: string
+          size_bytes?: number | null
+          storage_path: string
+          uploaded_at?: string
+        }
+        Update: {
+          extraction_raw?: Json | null
+          extraction_status?: string
+          id?: string
+          mime_type?: string | null
+          original_name?: string
+          size_bytes?: number | null
+          storage_path?: string
+          uploaded_at?: string
+        }
+        Relationships: []
+      }
+      profile: {
+        Row: {
+          age: number | null
+          allergies: string | null
+          birth_date: string | null
+          created_at: string
+          email: string | null
+          family_doctor: string | null
+          family_history: Json | null
+          food_diary: Json | null
+          food_preferences: Json | null
+          full_name: string | null
+          goal: string | null
+          height_cm: number | null
+          id: string
+          intolerances: string | null
+          medications: Json | null
+          pathologies: Json | null
+          phone: string | null
+          profession: string | null
+          target_weight_kg: number | null
+          updated_at: string
+          weight_history: Json | null
+        }
+        Insert: {
+          age?: number | null
+          allergies?: string | null
+          birth_date?: string | null
+          created_at?: string
+          email?: string | null
+          family_doctor?: string | null
+          family_history?: Json | null
+          food_diary?: Json | null
+          food_preferences?: Json | null
+          full_name?: string | null
+          goal?: string | null
+          height_cm?: number | null
+          id?: string
+          intolerances?: string | null
+          medications?: Json | null
+          pathologies?: Json | null
+          phone?: string | null
+          profession?: string | null
+          target_weight_kg?: number | null
+          updated_at?: string
+          weight_history?: Json | null
+        }
+        Update: {
+          age?: number | null
+          allergies?: string | null
+          birth_date?: string | null
+          created_at?: string
+          email?: string | null
+          family_doctor?: string | null
+          family_history?: Json | null
+          food_diary?: Json | null
+          food_preferences?: Json | null
+          full_name?: string | null
+          goal?: string | null
+          height_cm?: number | null
+          id?: string
+          intolerances?: string | null
+          medications?: Json | null
+          pathologies?: Json | null
+          phone?: string | null
+          profession?: string | null
+          target_weight_kg?: number | null
+          updated_at?: string
+          weight_history?: Json | null
+        }
+        Relationships: []
+      }
+      visits: {
+        Row: {
+          created_at: string
+          document_id: string | null
+          id: string
+          notes: string | null
+          updated_at: string
+          visit_date: string
+          weight_kg: number | null
+        }
+        Insert: {
+          created_at?: string
+          document_id?: string | null
+          id?: string
+          notes?: string | null
+          updated_at?: string
+          visit_date: string
+          weight_kg?: number | null
+        }
+        Update: {
+          created_at?: string
+          document_id?: string | null
+          id?: string
+          notes?: string | null
+          updated_at?: string
+          visit_date?: string
+          weight_kg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visits_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
