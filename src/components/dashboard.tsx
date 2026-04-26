@@ -456,12 +456,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   );
   const hasCooldown = Object.values(cooldowns).some((until) => until > now);
 
-  // Tick ogni secondo solo se c'è almeno un'estrazione in corso
+  // Tick ogni secondo se c'è un'estrazione in corso o un cooldown attivo (per countdown UI)
   useEffect(() => {
-    if (!hasActive) return;
+    if (!hasActive && !hasCooldown) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [hasActive]);
+  }, [hasActive, hasCooldown]);
 
   // Polling automatico della dashboard ogni 5s mentre c'è processing
   useEffect(() => {
