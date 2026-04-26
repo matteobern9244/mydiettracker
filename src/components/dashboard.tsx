@@ -513,8 +513,26 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
     }
   };
 
-  const handleRetry = async (id: string) => {
+  const handleRetry = async (id: string, currentStatus: ExtractionStatus) => {
+    // Idempotenza: ignora click se già in esecuzione, in processing, o in cooldown
+    if (retryingId === id) return;
+    if (currentStatus === "processing") {
+      toast.info("Estrazione già in corso.");
+      return;
+    }
+    const until = cooldowns[id];
+    if (until && until > Date.now()) {
+      const sec = Math.ceil((until - Date.now()) / 1000);
+      toast.info(`Riprovi tra ${sec}s per evitare job duplicati.`);
+      return;
+    }
+
+    // Imposta subito il cooldown PRIMA della chiamata per bloccare altri click
+    const nextCooldowns = { ...cooldowns, [id]: Date.now() + RETRY_COOLDOWN_MS };
+    setCooldowns(nextCooldowns);
+    writeCooldowns(nextCooldowns);
     setRetryingId(id);
+
     try {
       processFn({ data: { documentId: id } }).catch(() => {});
       toast.info("Estrazione riavviata.");
@@ -524,6 +542,13 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
         if (status === "extracted" || status === "confirmed" || status === "failed") {
           qc.invalidateQueries({ queryKey: ["dashboard"] });
           setRetryingId((cur) => (cur === id ? null : cur));
+          // Estrazione terminata: rimuovi il cooldown così l'utente può ritentare se serve
+          setCooldowns((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            writeCooldowns(next);
+            return next;
+          });
           if (status === "failed") toast.error("Estrazione fallita di nuovo.");
           else toast.success("Estrazione completata.");
           return;
