@@ -80,13 +80,17 @@ export interface VisitFull extends Visit {
   dexa_segments: DexaSegment[];
 }
 
+export type ExtractionStatus = "pending" | "processing" | "extracted" | "confirmed" | "failed";
+
 export interface DocumentRow {
   id: string;
   original_name: string;
   storage_path: string;
   size_bytes: number | null;
   uploaded_at: string;
-  extraction_status: "pending" | "extracted" | "confirmed" | "failed";
+  extraction_status: ExtractionStatus;
+  extraction_error: string | null;
+  mime_type: string | null;
 }
 
 // Una singola visita estratta dal documento (con tutti i dati a essa collegati)
