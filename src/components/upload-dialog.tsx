@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { uploadDocument, processExtraction, getExtractionStatus, saveConfirmedData } from "@/lib/dashboard.functions";
+import { withAuth } from "@/lib/server-call";
 import type { ExtractedData, ExtractedVisit, Circumferences, BodyComposition, DexaSegment, DexaSegmentKey } from "@/lib/types";
 
 type Step = "upload" | "processing" | "review" | "saving" | "error";
