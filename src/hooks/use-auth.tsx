@@ -27,35 +27,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     // CRITICAL: register the listener BEFORE getSession (per knowledge guide)
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
       setSession(newSession);
       setLoading(false);
     });
 
     supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
       setSession(data.session);
       setLoading(false);
     });
 
     return () => {
+      mounted = false;
       sub.subscription.unsubscribe();
     };
   }, []);
 
   const signInWithGoogle = useCallback(async (redirectUri?: string) => {
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: redirectUri ?? (typeof window !== "undefined" ? window.location.origin : undefined),
-    });
-    if (result.error) {
-      return { error: result.error instanceof Error ? result.error : new Error(String(result.error)) };
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: redirectUri ?? (typeof window !== "undefined" ? window.location.origin : undefined),
+      });
+      if (result.error) {
+        return { error: result.error instanceof Error ? result.error : new Error(String(result.error)) };
+      }
+      return { redirected: result.redirected };
+    } catch (e) {
+      return { error: e instanceof Error ? e : new Error(String(e)) };
     }
-    return { redirected: result.redirected };
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    // Aggiorna subito lo stato locale così la UI reagisce anche se la chiamata
+    // remota è lenta o fallisce per problemi di rete temporanei.
     setSession(null);
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Best-effort: la sessione locale è già stata azzerata.
+    }
   }, []);
 
   const value = useMemo<AuthState>(

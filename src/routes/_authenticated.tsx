@@ -13,8 +13,11 @@ function AuthenticatedLayout() {
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      const here = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
-      navigate({ to: "/login", search: { redirect: here } });
+      const here =
+        typeof window !== "undefined"
+          ? window.location.pathname + window.location.search
+          : "/";
+      navigate({ to: "/login", search: { redirect: here }, replace: true });
     }
   }, [isAuthenticated, loading, navigate]);
 
