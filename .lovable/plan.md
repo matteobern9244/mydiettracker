@@ -1,85 +1,136 @@
-# Fix: "upstream request timeout" durante l'analisi AI
+# Login Google + multi-utente
 
-## Causa del problema
-
-`uploadAndExtract` esegue **in un'unica request HTTP**: upload storage → creazione record → estrazione testo → chiamata AI Gemini → update DB. Quando il file è un `.doc` legacy, il fallback invia il **binario intero in base64** a Gemini con un prompt complesso multi-visita: la chiamata supera facilmente i 30–40s e il proxy upstream (Cloudflare/Lovable) chiude la connessione con `upstream request timeout` **prima** che il server function risponda. Il file viene anche caricato più volte ad ogni retry.
-
-Va spezzato in **upload veloce + job asincrono + polling**, ed è opportuno ridurre la latenza AI quando possibile.
+Obiettivo: nessuno può vedere/usare l'app senza prima accedere con Google. Ogni utente vede solo i propri dati. Le estrazioni AI continuano a usare Lovable AI Gateway così com'è.
 
 ---
 
-## Cosa farò
+## 1. Migrazione DB — multi-utente
 
-### 1. Migrazione DB: stato del job di estrazione
+Una sola migrazione che:
 
-Migration su `public.documents`:
-- aggiungo colonna `extraction_error text` (per messaggi di errore leggibili)
-- estendo i valori ammessi di `extraction_status` per includere `processing` (oltre a `pending | extracted | failed | confirmed`)
+**a) Aggiunge `user_id uuid` a tutte le tabelle dati**
+- `profile.user_id` UNIQUE NOT NULL (un profilo per utente, FK → `auth.users(id) ON DELETE CASCADE`)
+- `documents.user_id` NOT NULL
+- `visits.user_id` NOT NULL
+- `circumferences.user_id` NOT NULL
+- `body_composition.user_id` NOT NULL
+- `dexa_segments.user_id` NOT NULL
+- `blood_tests.user_id` NOT NULL
 
-Nessuna modifica a tabelle riservate. Nessun CHECK constraint vincolante (uso solo testo libero).
+Per i dati esistenti uso un placeholder UUID temporaneo (NULL all'inizio, poi i dati vecchi resteranno orfani — come da scelta utente "multi-utente completo"). Non li migro automaticamente: dopo il primo login l'utente potrà eventualmente farsi assegnare manualmente i dati storici via SQL, oppure ripartire pulito con hard reset.
+→ pratica: aggiungo le colonne **NULLABLE**, poi aggiungo un secondo passaggio nello stesso file che (i) DELETE-a le righe orfane esistenti (è una single-user demo) e (ii) le imposta NOT NULL.
 
-### 2. Split del server function `uploadAndExtract` in tre endpoint
+**b) Sostituisce le policy `open_all` con policy per utente**
+Per ogni tabella: 4 policy (SELECT/INSERT/UPDATE/DELETE) che controllano `user_id = auth.uid()`.
 
-In `src/lib/dashboard.functions.ts`:
+**c) Restringe le policy storage del bucket `referti`**
+Lo `storage_path` continua a essere `referti/{ts}_{name}` ma le policy filtrano sulla colonna `owner` (popolata automaticamente da Supabase con `auth.uid()` quando si carica con un client autenticato). Le 4 policy diventano `bucket_id='referti' AND owner = auth.uid()`.
 
-**a) `uploadDocument(formData)`** — risposta immediata
-- valida e carica il file in storage `referti/`
-- inserisce row in `documents` con `extraction_status: 'pending'`
-- ritorna `{ documentId }` in <1s
+**d) Trigger di auto-creazione profilo al signup**
+Function `public.handle_new_user()` SECURITY DEFINER + trigger su `auth.users` AFTER INSERT che inserisce una riga in `public.profile` con `user_id = NEW.id` ed `email = NEW.email`. Così appena un utente fa il primo login Google, ha già il suo profilo vuoto.
 
-**b) `processExtraction({ documentId })`** — job di estrazione
-- legge il file dallo storage
-- segna `extraction_status: 'processing'`
-- esegue `extractDocumentInput()` + `extractWithAI()`
-- al successo: aggiorna `extraction_status: 'extracted'`, `extraction_raw`, pulisce `extraction_error`
-- al fallimento: aggiorna `extraction_status: 'failed'`, `extraction_error`
-- **non ritorna l'estratto**: il client lo recupera con polling (così se la request si chiude per timeout, il job continua e il dato è comunque scritto sul DB al termine)
+**e) Rimozione della riga profilo iniziale "Matteo Bernardini"** — verrà sostituita dal profilo reale post-login.
 
-**c) `getExtractionStatus({ documentId })`** — polling rapido
-- ritorna `{ status, extracted, error }`
+Nota: `auth.users` resta intoccata, modifico solo trigger (consentito).
 
-`saveConfirmedData`, `getDashboardData`, `deleteVisit`, `getDocumentUrl`, `updateTargetWeight`, `hardResetAllData` restano invariati.
+## 2. Configurazione auth (configure_auth tool)
 
-### 3. Riduzione latenza dell'estrazione AI
+- Email signups disabilitati (solo Google).
+- `password_hibp_enabled: true` per sicurezza generale.
+- Niente auto-confirm: Google è già verificato di default.
 
-In `src/lib/extraction.server.ts`:
-- **Modello più veloce**: passo da `google/gemini-2.5-flash` a `google/gemini-2.5-flash-lite` per l'estrazione (lo schema strutturato è ben gestito anche dal lite e taglia ~50% del tempo).
-- **Soglia naive .doc più permissiva**: accetto il testo estratto quando è ≥ 80 caratteri (prima 200), così evito il fallback binario che è la causa principale dei timeout.
-- **Aggiungo timeout esplicito** sulla `fetch` verso il gateway (60s) con `AbortController`, con messaggio d'errore chiaro "L'estrazione è andata oltre il limite, riprova".
-- Il fallback binario per `.doc` resta come ultima spiaggia, ma viene attivato raramente.
+(Google OAuth in Lovable Cloud è già pronto out-of-the-box, nessuna configurazione manuale richiesta.)
 
-### 4. Frontend: nuovo flusso con polling
+## 3. Schermata di login dedicata
 
-In `src/components/upload-dialog.tsx`:
-- nuovo step `"processing"` con messaggio "Sto leggendo il referto, può richiedere fino a 1–2 minuti…"
-- la mutation chiama in sequenza:
-  1. `uploadDocument(file)` → ottiene `documentId` velocemente
-  2. avvia `processExtraction({ documentId })` **senza attendere il risultato** (fire & forget, con `.catch` silenzioso: anche se il proxy chiude la connessione, il job server-side continua perché la chiamata Supabase è già partita)
-  3. inizia un **polling** ogni 3s su `getExtractionStatus({ documentId })` con timeout massimo di 3 minuti
-  4. quando lo status è `extracted` mostra il review form esistente
-  5. se `failed` mostra `extraction_error` e permette retry o annullo
-- Aggiungo pulsante "Riprova estrazione" nello step di errore (richiama `processExtraction` sullo stesso `documentId` senza ricaricare il file).
+Nuovo file `src/routes/login.tsx`:
+- pulsante grande "Accedi con Google" (usa `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })`)
+- riconosce `?redirect=/...` per tornare sulla pagina richiesta dopo il login
+- se l'utente è già loggato, redirect immediato alla home
 
-### 5. Pulizia in caso di annullamento
+Per usare `lovable.auth.signInWithOAuth` devo prima chiamare il tool **Configure Social Login** per Google (che genera `src/integrations/lovable/`). Questo passaggio è automatico.
 
-Se l'utente annulla durante upload/processing, NON rimuovo automaticamente il file/documento (resta come `pending`/`failed`). L'hard reset esistente già pulisce tutto.
+## 4. Guard di autenticazione
+
+Nuovo file `src/routes/_authenticated.tsx` (pathless layout):
+- in `beforeLoad` controlla la sessione Supabase; se assente, `redirect({ to: "/login", search: { redirect: location.href } })`
+- altrimenti renderizza `<Outlet />`
+
+Sposto `src/routes/index.tsx` in `src/routes/_authenticated/index.tsx` così la dashboard finisce automaticamente sotto il guard. Stesso trattamento per qualsiasi futura route protetta.
+
+## 5. Hook auth + AuthProvider
+
+Nuovo `src/hooks/use-auth.tsx`:
+- inizializza con `supabase.auth.getSession()`
+- ascolta `supabase.auth.onAuthStateChange` (listener montato PRIMA di getSession come da knowledge)
+- espone `{ user, session, loading, signInWithGoogle, signOut }`
+- `useAuth()` per i componenti
+
+Wrap del provider nel `RootComponent` in `__root.tsx` così è disponibile ovunque (incluso il guard via context router).
+
+Aggiungo anche `auth: { user, isAuthenticated }` nel router context (`createRootRouteWithContext`) e lo passo dal `RootComponent` con un piccolo wrapper, così il `beforeLoad` del guard può leggerlo senza chiamate async ridondanti.
+
+## 6. Server functions: scope per utente
+
+Refactor di `src/lib/dashboard.functions.ts`. Tutte le 8 server functions oggi usano `supabaseAdmin` (bypassa RLS). Le converto a usare il middleware `requireSupabaseAuth` + `context.supabase` (client autenticato che rispetta RLS) e `context.userId` per popolare `user_id` su INSERT.
+
+Modifiche puntuali:
+- `uploadDocument`: aggiunge `user_id: userId` all'insert su `documents`. Il file in storage viene caricato con il client autenticato (così `owner` viene popolato e le policy storage funzionano).
+- `processExtraction`: usa `context.supabase` (l'utente vede solo i suoi documenti — quindi l'idempotenza/ricerca documento è automaticamente scoped).
+- `getExtractionStatus`: idem.
+- `saveConfirmedData`: aggiunge `user_id: userId` su tutte le insert (visits, circumferences, body_composition, dexa_segments, blood_tests).
+- `getDashboardData`: rimuove il "limit(1)" sul profilo perché ora c'è un profilo per utente; le altre query sono già auto-filtrate da RLS.
+- `updateTargetWeight`, `deleteVisit`, `getDocumentUrl`: scoped via RLS.
+- `hardResetAllData`: cancella SOLO le righe dell'utente loggato (non più tutto il DB). Il bucket storage viene listato e filtrato per file dell'utente (uso `owner = userId` via query SQL su `storage.objects`).
+
+`supabaseAdmin` resta importato solo dove serve per operazioni che richiedono service role (al momento, nessuna).
+
+## 7. Frontend: chiamate alle server function
+
+Le server function di TanStack Start chiamate dal client passano automaticamente i cookie ma il middleware `requireSupabaseAuth` controlla l'header `Authorization: Bearer <token>`. Quindi creo un piccolo wrapper `callServerFn` che prima di ogni chiamata legge `supabase.auth.getSession()` e aggiunge l'header. In alternativa, più semplice: aggiungo nel `QueryClient` un `defaultOptions.queries.meta` o uso direttamente `fetch` con header custom.
+
+Approccio scelto: piccolo helper `withAuth(fn)` che wrappa la chiamata e usa `getSession()` per iniettare l'header. Aggiorno `dashboard.tsx` e `upload-dialog.tsx` per usare il wrapper.
+
+## 8. UI: pulsante logout + stato utente
+
+In `dashboard.tsx` (header in alto) aggiungo:
+- avatar/iniziale + email dell'utente
+- menu dropdown con "Esci" che chiama `signOut()` e fa redirect a `/login`
+
+## 9. Pulizia / coerenza
+
+- Rimuovo l'INSERT iniziale del profilo "Matteo Bernardini" (è nella migrazione vecchia, ma il trigger nuovo se ne occuperà).
+- Aggiorno il titolo della pagina login con `head()` proprio.
+- Le route esistenti (solo `/`) restano funzionanti dopo il move sotto `_authenticated/`.
 
 ---
 
 ## File toccati
-- `supabase/migrations/<new>.sql` (nuova migrazione: colonna `extraction_error`)
-- `src/lib/dashboard.functions.ts` (split in 3 endpoint + nuovo `getExtractionStatus`)
-- `src/lib/extraction.server.ts` (modello lite, soglia naive, timeout fetch)
-- `src/components/upload-dialog.tsx` (step `processing`, polling, retry)
-- `src/integrations/supabase/types.ts` viene rigenerato automaticamente
+
+| File | Tipo |
+|---|---|
+| `supabase/migrations/<new>.sql` | nuovo |
+| `src/integrations/lovable/*` | generato dal tool Configure Social Login |
+| `src/routes/login.tsx` | nuovo |
+| `src/routes/_authenticated.tsx` | nuovo |
+| `src/routes/_authenticated/index.tsx` | spostato da `src/routes/index.tsx` |
+| `src/routes/index.tsx` | eliminato |
+| `src/routes/__root.tsx` | aggiunge AuthProvider + router context auth |
+| `src/router.tsx` | tipizza `auth` nel context |
+| `src/hooks/use-auth.tsx` | nuovo |
+| `src/lib/dashboard.functions.ts` | refactor: middleware + user_id |
+| `src/lib/server-call.ts` | nuovo helper `withAuth` |
+| `src/components/dashboard.tsx` | header con utente+logout, callServerFn wrapper |
+| `src/components/upload-dialog.tsx` | callServerFn wrapper |
 
 ## File NON toccati
-- `src/components/dashboard.tsx`, `hard-reset-dialog.tsx`, `insight-card.tsx`, `status-badge.tsx`
-- `src/lib/insights.ts`, `src/lib/types.ts`
-- `src/integrations/supabase/client.ts`, `client.server.ts`
+- `extraction.server.ts` (Lovable AI invariato)
+- `insights.ts`, `types.ts`, schema KPI
+- `client.ts`, `client.server.ts`, `auth-middleware.ts`, `types.ts` (auto-generati)
 
 ## Risultato atteso
-- L'upload risponde subito (nessun timeout sulla prima request).
-- L'estrazione gira in background; anche se la chiamata HTTP `processExtraction` viene chiusa dal proxy, il lavoro continua e il risultato finisce nel DB.
-- Il client mostra avanzamento reale tramite polling, quindi niente più toast "upstream request timeout".
-- Documenti `.docx` testuali (la maggior parte dei referti) vengono processati in 5–15s con `flash-lite`, ben sotto qualsiasi limite.
+- Ad ogni avvio dell'app, se non sei loggato vedi `/login` con il pulsante Google.
+- Dopo il login Google torni esattamente sulla pagina dove stavi.
+- Vedi solo i tuoi dati; un altro utente che fa login con un altro account Google parte da zero con un profilo vuoto auto-creato.
+- L'estrazione referti continua a funzionare via Lovable AI Gateway senza modifiche.
+- "Hard reset" pulisce solo i tuoi dati, non quelli degli altri.

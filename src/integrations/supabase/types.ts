@@ -29,6 +29,7 @@ export type Database = {
           test_date: string
           total_cholesterol: number | null
           triglycerides: number | null
+          user_id: string
           visit_id: string | null
         }
         Insert: {
@@ -45,6 +46,7 @@ export type Database = {
           test_date: string
           total_cholesterol?: number | null
           triglycerides?: number | null
+          user_id: string
           visit_id?: string | null
         }
         Update: {
@@ -61,6 +63,7 @@ export type Database = {
           test_date?: string
           total_cholesterol?: number | null
           triglycerides?: number | null
+          user_id?: string
           visit_id?: string | null
         }
         Relationships: [
@@ -83,6 +86,7 @@ export type Database = {
           id: string
           lean_mass_kg: number | null
           metabolic_age: number | null
+          user_id: string
           visceral_fat: number | null
           visit_id: string
         }
@@ -95,6 +99,7 @@ export type Database = {
           id?: string
           lean_mass_kg?: number | null
           metabolic_age?: number | null
+          user_id: string
           visceral_fat?: number | null
           visit_id: string
         }
@@ -107,6 +112,7 @@ export type Database = {
           id?: string
           lean_mass_kg?: number | null
           metabolic_age?: number | null
+          user_id?: string
           visceral_fat?: number | null
           visit_id?: string
         }
@@ -131,6 +137,7 @@ export type Database = {
           id: string
           neck_cm: number | null
           thigh_cm: number | null
+          user_id: string
           visit_id: string
           waist_cm: number | null
           wrist_cm: number | null
@@ -145,6 +152,7 @@ export type Database = {
           id?: string
           neck_cm?: number | null
           thigh_cm?: number | null
+          user_id: string
           visit_id: string
           waist_cm?: number | null
           wrist_cm?: number | null
@@ -159,6 +167,7 @@ export type Database = {
           id?: string
           neck_cm?: number | null
           thigh_cm?: number | null
+          user_id?: string
           visit_id?: string
           waist_cm?: number | null
           wrist_cm?: number | null
@@ -180,6 +189,7 @@ export type Database = {
           id: string
           lean_mass_kg: number | null
           segment: string
+          user_id: string
           visit_id: string
         }
         Insert: {
@@ -188,6 +198,7 @@ export type Database = {
           id?: string
           lean_mass_kg?: number | null
           segment: string
+          user_id: string
           visit_id: string
         }
         Update: {
@@ -196,6 +207,7 @@ export type Database = {
           id?: string
           lean_mass_kg?: number | null
           segment?: string
+          user_id?: string
           visit_id?: string
         }
         Relationships: [
@@ -219,6 +231,7 @@ export type Database = {
           size_bytes: number | null
           storage_path: string
           uploaded_at: string
+          user_id: string
         }
         Insert: {
           extraction_error?: string | null
@@ -230,6 +243,7 @@ export type Database = {
           size_bytes?: number | null
           storage_path: string
           uploaded_at?: string
+          user_id: string
         }
         Update: {
           extraction_error?: string | null
@@ -241,6 +255,7 @@ export type Database = {
           size_bytes?: number | null
           storage_path?: string
           uploaded_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -266,6 +281,7 @@ export type Database = {
           profession: string | null
           target_weight_kg: number | null
           updated_at: string
+          user_id: string
           weight_history: Json | null
         }
         Insert: {
@@ -289,6 +305,7 @@ export type Database = {
           profession?: string | null
           target_weight_kg?: number | null
           updated_at?: string
+          user_id: string
           weight_history?: Json | null
         }
         Update: {
@@ -312,6 +329,7 @@ export type Database = {
           profession?: string | null
           target_weight_kg?: number | null
           updated_at?: string
+          user_id?: string
           weight_history?: Json | null
         }
         Relationships: []
@@ -323,6 +341,7 @@ export type Database = {
           id: string
           notes: string | null
           updated_at: string
+          user_id: string
           visit_date: string
           weight_kg: number | null
         }
@@ -332,6 +351,7 @@ export type Database = {
           id?: string
           notes?: string | null
           updated_at?: string
+          user_id: string
           visit_date: string
           weight_kg?: number | null
         }
@@ -341,6 +361,7 @@ export type Database = {
           id?: string
           notes?: string | null
           updated_at?: string
+          user_id?: string
           visit_date?: string
           weight_kg?: number | null
         }

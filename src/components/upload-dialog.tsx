@@ -60,10 +60,14 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qc = useQueryClient();
-  const uploadFn = useServerFn(uploadDocument);
-  const processFn = useServerFn(processExtraction);
-  const statusFn = useServerFn(getExtractionStatus);
-  const saveFn = useServerFn(saveConfirmedData);
+  const uploadFnRaw = useServerFn(uploadDocument);
+  const processFnRaw = useServerFn(processExtraction);
+  const statusFnRaw = useServerFn(getExtractionStatus);
+  const saveFnRaw = useServerFn(saveConfirmedData);
+  const uploadFn = withAuth(uploadFnRaw);
+  const processFn = withAuth(processFnRaw);
+  const statusFn = withAuth(statusFnRaw);
+  const saveFn = withAuth(saveFnRaw);
 
   const clearTimers = () => {
     if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
