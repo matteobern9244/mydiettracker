@@ -94,6 +94,18 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     setActiveIdx(0);
     setErrorMsg(null);
     setProcessingElapsed(0);
+    setDuplicate(null);
+  };
+
+  // Avvia il job di estrazione e il polling. Riutilizzato sia dopo un upload
+  // pulito sia dopo una sostituzione (entrambi finiscono con un nuovo docId).
+  const startExtractionFor = (docId: string) => {
+    setDocumentId(docId);
+    setStep("processing");
+    processFn({ data: { documentId: docId } }).catch(() => {
+      // ignora: lo stato reale lo legge il polling dal DB
+    });
+    startPolling(docId);
   };
 
   // Polling sullo status del documento
