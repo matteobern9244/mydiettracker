@@ -222,6 +222,7 @@ export type Database = {
       }
       documents: {
         Row: {
+          content_hash: string | null
           extraction_error: string | null
           extraction_raw: Json | null
           extraction_status: string
@@ -234,6 +235,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          content_hash?: string | null
           extraction_error?: string | null
           extraction_raw?: Json | null
           extraction_status?: string
@@ -246,6 +248,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          content_hash?: string | null
           extraction_error?: string | null
           extraction_raw?: Json | null
           extraction_status?: string
