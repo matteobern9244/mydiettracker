@@ -581,7 +581,14 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   );
 }
 
-
+function scrollToKpi() {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById("kpi-section");
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.add("ring-2", "ring-primary/60");
+  setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1500);
+}
 function DangerZone() {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
