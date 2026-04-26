@@ -399,12 +399,56 @@ const STATUS_META: Record<ExtractionStatus, { label: string; tone: string; icon:
   failed: { label: "Errore", tone: "bg-destructive/15 text-destructive border-destructive/30", icon: <FileText className="h-3.5 w-3.5" /> },
 };
 
-// Stima asintotica: 1 - exp(-t/τ), cap al 95% finché lo stato non passa a extracted.
-// τ ≈ 25s → a 25s ~63%, a 45s ~83%, a 60s ~91%.
-const EXTRACTION_TAU_MS = 25_000;
-function estimateProgress(elapsedMs: number): number {
-  const raw = 1 - Math.exp(-Math.max(0, elapsedMs) / EXTRACTION_TAU_MS);
-  return Math.min(0.95, raw);
+// Stima della durata di estrazione basata su dimensione file + tipo MIME.
+// Idea: tempo "atteso" T = base + perMB * size_MB, clampato a [min, max].
+// Poi usiamo τ = T/2 nella curva 1 - exp(-t/τ) → al tempo atteso T siamo ~86%,
+// a 2T ~98%. Cap al 95% finché lo stato non passa a extracted, così la barra
+// non "tocca il fondo" prima che il backend confermi.
+const PROGRESS_CAP = 0.95;
+const MIN_EXPECTED_MS = 8_000;   // file minuscoli: comunque almeno ~8s percepiti
+const MAX_EXPECTED_MS = 180_000; // tetto: 3 minuti
+
+type MimeProfile = { baseMs: number; perMbMs: number };
+
+// Profili calibrati per tipo: i PDF scansionati e le immagini richiedono OCR
+// (più lento per MB), i PDF testuali e i fogli sono più rapidi.
+function mimeProfile(mime: string | null | undefined): MimeProfile {
+  const m = (mime ?? "").toLowerCase();
+  if (m.startsWith("image/")) return { baseMs: 12_000, perMbMs: 22_000 }; // OCR pesante
+  if (m === "application/pdf") return { baseMs: 10_000, perMbMs: 9_000 }; // mix testo/scan
+  if (
+    m === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    m === "application/msword"
+  ) return { baseMs: 9_000, perMbMs: 5_500 };
+  if (
+    m === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    m === "application/vnd.ms-excel" ||
+    m === "text/csv"
+  ) return { baseMs: 7_000, perMbMs: 3_500 };
+  if (m.startsWith("text/")) return { baseMs: 5_000, perMbMs: 2_500 };
+  // Fallback prudente
+  return { baseMs: 12_000, perMbMs: 8_000 };
+}
+
+function expectedDurationMs(sizeBytes: number | null | undefined, mime: string | null | undefined): number {
+  const { baseMs, perMbMs } = mimeProfile(mime);
+  const sizeMb = Math.max(0, (sizeBytes ?? 0) / (1024 * 1024));
+  const raw = baseMs + perMbMs * sizeMb;
+  return Math.min(MAX_EXPECTED_MS, Math.max(MIN_EXPECTED_MS, raw));
+}
+
+function estimateProgress(elapsedMs: number, expectedMs: number): number {
+  const tau = Math.max(1_000, expectedMs / 2);
+  const raw = 1 - Math.exp(-Math.max(0, elapsedMs) / tau);
+  return Math.min(PROGRESS_CAP, raw);
+}
+
+function formatRemaining(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  if (s < 60) return `~${s}s rimanenti`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r === 0 ? `~${m}m rimanenti` : `~${m}m ${r}s rimanenti`;
 }
 
 // Cooldown anti-doppio-click sul retry, persistito in localStorage (sopravvive a reload).
@@ -581,11 +625,14 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
           const isRetrying = retryingId === d.id;
           const isActive = d.extraction_status === "processing" || (isRetrying && d.extraction_status === "pending");
           const elapsedMs = isActive ? Math.max(0, now - new Date(d.uploaded_at).getTime()) : 0;
-          const pct = isActive ? Math.round(estimateProgress(elapsedMs) * 100) : 0;
           const cooldownUntil = cooldowns[d.id] ?? 0;
           const cooldownLeftSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
           const retryDisabled = isRetrying || d.extraction_status === "processing" || cooldownLeftSec > 0;
           const elapsedSec = Math.round(elapsedMs / 1000);
+          const expectedMs = expectedDurationMs(d.size_bytes, d.mime_type);
+          const progress01 = isActive ? estimateProgress(elapsedMs, expectedMs) : 0;
+          const pct = Math.round(progress01 * 100);
+          const remainingMs = isActive ? Math.max(0, expectedMs - elapsedMs) : 0;
 
           return (
             <div
@@ -610,8 +657,8 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                   <div className="mt-2 space-y-1">
                     <Progress value={pct} className="h-1.5" />
                     <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-                      <span>~{pct}%</span>
-                      <span>{elapsedSec}s trascorsi</span>
+                      <span>~{pct}% · {elapsedSec}s trascorsi</span>
+                      <span>{formatRemaining(remainingMs)}</span>
                     </div>
                   </div>
                 )}
