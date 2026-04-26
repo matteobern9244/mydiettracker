@@ -19,7 +19,9 @@ import {
   updateTargetWeight,
   deleteVisit,
   getDocumentUrl,
+  hardResetAllData,
 } from "@/lib/dashboard.functions";
+import { HardResetDialog } from "@/components/hard-reset-dialog";
 import {
   formatNumber,
   formatDate,
@@ -372,12 +374,54 @@ export function Dashboard() {
                 })}
               </TabsContent>
             </Tabs>
+
+            {/* Zona pericolosa */}
+            <DangerZone />
           </>
         )}
       </main>
 
       <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
     </div>
+  );
+}
+
+function DangerZone() {
+  const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+  const resetFn = useServerFn(hardResetAllData);
+  const resetMut = useMutation({
+    mutationFn: () => resetFn({ data: { confirm: "RESET" } }),
+    onSuccess: () => {
+      toast.success("Tutti i dati sono stati cancellati.");
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      setOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="border-destructive/40 bg-destructive/5">
+      <CardHeader>
+        <CardTitle className="text-base text-destructive flex items-center gap-2">
+          <Trash2 className="h-4 w-4" /> Zona pericolosa
+        </CardTitle>
+        <CardDescription>
+          Cancella definitivamente tutte le visite, gli esami, i file caricati e i dati anagrafici.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button variant="destructive" onClick={() => setOpen(true)}>
+          <Trash2 className="mr-2 h-4 w-4" /> Cancella tutti i dati
+        </Button>
+      </CardContent>
+      <HardResetDialog
+        open={open}
+        onOpenChange={setOpen}
+        onConfirm={() => resetMut.mutate()}
+        loading={resetMut.isPending}
+      />
+    </Card>
   );
 }
 

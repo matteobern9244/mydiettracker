@@ -100,67 +100,77 @@ function cleanExtractedText(raw: string): string {
 
 const EXTRACTION_SCHEMA = {
   name: "extract_dietologia",
-  description: "Estrae i dati strutturati da un referto dietologico italiano",
+  description:
+    "Estrae TUTTE le visite presenti nel referto dietologico italiano. Una visita per ogni colonna/data trovata, anche se alcuni valori sono vuoti.",
   parameters: {
     type: "object",
     properties: {
-      visit: {
-        type: "object",
-        properties: {
-          visit_date: { type: ["string", "null"], description: "Data della visita in formato YYYY-MM-DD. Esempio: '31,1,25' va interpretato come '2025-01-31'." },
-          weight_kg: { type: ["number", "null"], description: "Peso in kg" },
-          notes: { type: ["string", "null"] },
-        },
-        required: ["visit_date", "weight_kg", "notes"],
-        additionalProperties: false,
-      },
-      circumferences: {
-        type: "object",
-        properties: {
-          arm_cm: { type: ["number", "null"] },
-          waist_cm: { type: ["number", "null"], description: "vita" },
-          abdomen_cm: { type: ["number", "null"], description: "addome" },
-          thigh_cm: { type: ["number", "null"], description: "coscia" },
-          hips_cm: { type: ["number", "null"], description: "anche" },
-          chest_cm: { type: ["number", "null"], description: "torace" },
-          neck_cm: { type: ["number", "null"], description: "collo" },
-          forearm_cm: { type: ["number", "null"], description: "avambraccio" },
-          wrist_cm: { type: ["number", "null"], description: "polso" },
-        },
-        required: ["arm_cm", "waist_cm", "abdomen_cm", "thigh_cm", "hips_cm", "chest_cm", "neck_cm", "forearm_cm", "wrist_cm"],
-        additionalProperties: false,
-      },
-      body_composition: {
-        type: "object",
-        properties: {
-          fat_mass_pct: { type: ["number", "null"], description: "Massa grassa in %" },
-          lean_mass_kg: { type: ["number", "null"], description: "Massa magra in kg" },
-          bone_mass_kg: { type: ["number", "null"], description: "Massa ossea in kg" },
-          bmi: { type: ["number", "null"] },
-          metabolic_age: { type: ["integer", "null"] },
-          hydration_pct: { type: ["number", "null"], description: "Idratazione in %" },
-          visceral_fat: { type: ["number", "null"], description: "Livello grasso viscerale" },
-        },
-        required: ["fat_mass_pct", "lean_mass_kg", "bone_mass_kg", "bmi", "metabolic_age", "hydration_pct", "visceral_fat"],
-        additionalProperties: false,
-      },
-      dexa_segments: {
+      visits: {
         type: "array",
-        description: "DEXA segmental: massa grassa% e massa magra kg per ogni arto/tronco",
+        description:
+          "Una entry per OGNI colonna/data presente nel referto. Non saltare mai una colonna: se nel documento ci sono 4 colonne con date, restituisci 4 visite. Se un valore non è presente per quella colonna, usa null.",
         items: {
           type: "object",
           properties: {
-            segment: { type: "string", enum: ["right_arm", "left_arm", "right_leg", "left_leg", "trunk"] },
-            fat_mass_pct: { type: ["number", "null"] },
-            lean_mass_kg: { type: ["number", "null"] },
+            visit_date: {
+              type: ["string", "null"],
+              description:
+                "Data della visita in formato YYYY-MM-DD. Esempio: '31,1,25' va interpretato come '2025-01-31'.",
+            },
+            weight_kg: { type: ["number", "null"], description: "Peso in kg per questa visita" },
+            notes: { type: ["string", "null"] },
+            circumferences: {
+              type: "object",
+              properties: {
+                arm_cm: { type: ["number", "null"] },
+                waist_cm: { type: ["number", "null"], description: "vita" },
+                abdomen_cm: { type: ["number", "null"], description: "addome" },
+                thigh_cm: { type: ["number", "null"], description: "coscia" },
+                hips_cm: { type: ["number", "null"], description: "anche" },
+                chest_cm: { type: ["number", "null"], description: "torace" },
+                neck_cm: { type: ["number", "null"], description: "collo" },
+                forearm_cm: { type: ["number", "null"], description: "avambraccio" },
+                wrist_cm: { type: ["number", "null"], description: "polso" },
+              },
+              required: ["arm_cm", "waist_cm", "abdomen_cm", "thigh_cm", "hips_cm", "chest_cm", "neck_cm", "forearm_cm", "wrist_cm"],
+              additionalProperties: false,
+            },
+            body_composition: {
+              type: "object",
+              properties: {
+                fat_mass_pct: { type: ["number", "null"], description: "Massa grassa in %" },
+                lean_mass_kg: { type: ["number", "null"], description: "Massa magra in kg" },
+                bone_mass_kg: { type: ["number", "null"], description: "Massa ossea in kg" },
+                bmi: { type: ["number", "null"] },
+                metabolic_age: { type: ["integer", "null"] },
+                hydration_pct: { type: ["number", "null"], description: "Idratazione in %" },
+                visceral_fat: { type: ["number", "null"], description: "Livello grasso viscerale" },
+              },
+              required: ["fat_mass_pct", "lean_mass_kg", "bone_mass_kg", "bmi", "metabolic_age", "hydration_pct", "visceral_fat"],
+              additionalProperties: false,
+            },
+            dexa_segments: {
+              type: "array",
+              description: "DEXA segmental: massa grassa% e massa magra kg per ogni arto/tronco di QUESTA visita",
+              items: {
+                type: "object",
+                properties: {
+                  segment: { type: "string", enum: ["right_arm", "left_arm", "right_leg", "left_leg", "trunk"] },
+                  fat_mass_pct: { type: ["number", "null"] },
+                  lean_mass_kg: { type: ["number", "null"] },
+                },
+                required: ["segment", "fat_mass_pct", "lean_mass_kg"],
+                additionalProperties: false,
+              },
+            },
           },
-          required: ["segment", "fat_mass_pct", "lean_mass_kg"],
+          required: ["visit_date", "weight_kg", "notes", "circumferences", "body_composition", "dexa_segments"],
           additionalProperties: false,
         },
       },
       blood_tests: {
         type: "array",
-        description: "Esami ematochimici: ogni colonna con una data diversa è un esame separato",
+        description: "TUTTI gli esami ematochimici trovati. Ogni colonna/data diversa è un esame separato.",
         items: {
           type: "object",
           properties: {
@@ -197,7 +207,7 @@ const EXTRACTION_SCHEMA = {
         additionalProperties: false,
       },
     },
-    required: ["visit", "circumferences", "body_composition", "dexa_segments", "blood_tests", "profile_updates"],
+    required: ["visits", "blood_tests", "profile_updates"],
     additionalProperties: false,
   },
 };
@@ -206,7 +216,18 @@ export async function extractWithAI(input: ExtractionInput): Promise<unknown> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY non configurata");
 
-  const systemPrompt = `Sei un assistente che estrae dati clinici da referti dietologici italiani. Rispondi SOLO usando il tool extract_dietologia. Le date in italiano abbreviate (es. "13,6,25") vanno trasformate in formato ISO YYYY-MM-DD assumendo l'anno 20XX. Se un valore non è presente o è vuoto nel testo, restituisci null. Le tabelle DEXA segmental hanno coppie ordinate: braccio destro, braccio sinistro, gamba destra, gamba sinistra, tronco.`;
+  const systemPrompt = `Sei un assistente che estrae TUTTI i dati clinici da referti dietologici italiani.
+
+REGOLE FONDAMENTALI:
+1. I referti dietologici italiani usano TABELLE con UNA COLONNA PER OGNI VISITA. Devi creare un elemento di "visits" per OGNI colonna/data che trovi. NON saltare mai una colonna. Se vedi 5 date diverse, restituisci 5 visite.
+2. Ogni visita deve contenere TUTTI i suoi dati associati: peso, circonferenze, composizione corporea (BMI, massa grassa, magra, viscerale, idratazione, età metabolica), DEXA segmental (braccia, gambe, tronco).
+3. Se per una colonna un valore non è riportato, usa null. Non inventare e non copiare valori da altre colonne.
+4. Le date in italiano abbreviate (es. "13,6,25" o "13/6/25" o "13-06-2025") vanno trasformate in formato ISO YYYY-MM-DD assumendo l'anno 20XX.
+5. Le tabelle DEXA segmental hanno coppie ordinate: braccio destro, braccio sinistro, gamba destra, gamba sinistra, tronco.
+6. Gli esami ematochimici sono SEPARATI dalle visite dietologiche e hanno date proprie: estraili tutti in "blood_tests".
+7. I dati anagrafici (nome, età, altezza, telefono, ecc.) vanno in "profile_updates" UNA SOLA VOLTA.
+
+ESAMINA L'INTERO DOCUMENTO. Non fermarti alla prima visita o alla prima pagina. Se il documento contiene 6 mesi di follow-up, restituisci 6 visite.`;
 
   // Costruisci il messaggio user (testo o multipart con file inline)
   const userContent =

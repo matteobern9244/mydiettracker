@@ -83,60 +83,65 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
   .inputValidator((input: { documentId: string; data: ExtractedData }) => input)
   .handler(async ({ data }) => {
     const { documentId, data: extracted } = data;
-    const v = extracted.visit;
-    if (!v.visit_date) throw new Error("Manca la data della visita");
-
-    // Crea visita
-    const { data: visit, error: visitErr } = await supabaseAdmin
-      .from("visits")
-      .insert({
-        visit_date: v.visit_date,
-        weight_kg: v.weight_kg,
-        notes: v.notes,
-        document_id: documentId,
-      })
-      .select("id")
-      .single();
-    if (visitErr || !visit) throw new Error(`Errore creazione visita: ${visitErr?.message}`);
-
-    const visitId = visit.id;
-
-    // Circonferenze
-    const c = extracted.circumferences;
-    const hasCirc = Object.values(c).some((x) => x != null);
-    if (hasCirc) {
-      const { error } = await supabaseAdmin
-        .from("circumferences")
-        .insert({ visit_id: visitId, ...c });
-      if (error) throw new Error(`Errore circonferenze: ${error.message}`);
+    const visitsList = extracted.visits ?? [];
+    if (visitsList.length === 0) throw new Error("Nessuna visita da salvare");
+    if (visitsList.some((v) => !v.visit_date)) {
+      throw new Error("Tutte le visite devono avere una data");
     }
 
-    // Composizione
-    const bc = extracted.body_composition;
-    const hasBc = Object.values(bc).some((x) => x != null);
-    if (hasBc) {
-      const { error } = await supabaseAdmin
-        .from("body_composition")
-        .insert({ visit_id: visitId, ...bc });
-      if (error) throw new Error(`Errore composizione: ${error.message}`);
-    }
+    const visitIds: string[] = [];
 
-    // DEXA segments
-    if (extracted.dexa_segments?.length) {
-      const rows = extracted.dexa_segments
-        .filter((s) => s.fat_mass_pct != null || s.lean_mass_kg != null)
-        .map((s) => ({ visit_id: visitId, ...s }));
-      if (rows.length) {
-        const { error } = await supabaseAdmin.from("dexa_segments").insert(rows);
-        if (error) throw new Error(`Errore DEXA: ${error.message}`);
+    for (const v of visitsList) {
+      // Crea visita
+      const { data: visitRow, error: visitErr } = await supabaseAdmin
+        .from("visits")
+        .insert({
+          visit_date: v.visit_date as string,
+          weight_kg: v.weight_kg,
+          notes: v.notes,
+          document_id: documentId,
+        })
+        .select("id")
+        .single();
+      if (visitErr || !visitRow) throw new Error(`Errore creazione visita: ${visitErr?.message}`);
+      const visitId = visitRow.id;
+      visitIds.push(visitId);
+
+      // Circonferenze
+      const c = v.circumferences;
+      if (c && Object.values(c).some((x) => x != null)) {
+        const { error } = await supabaseAdmin
+          .from("circumferences")
+          .insert({ visit_id: visitId, ...c });
+        if (error) throw new Error(`Errore circonferenze: ${error.message}`);
+      }
+
+      // Composizione
+      const bc = v.body_composition;
+      if (bc && Object.values(bc).some((x) => x != null)) {
+        const { error } = await supabaseAdmin
+          .from("body_composition")
+          .insert({ visit_id: visitId, ...bc });
+        if (error) throw new Error(`Errore composizione: ${error.message}`);
+      }
+
+      // DEXA segments
+      if (v.dexa_segments?.length) {
+        const rows = v.dexa_segments
+          .filter((s) => s.fat_mass_pct != null || s.lean_mass_kg != null)
+          .map((s) => ({ visit_id: visitId, ...s }));
+        if (rows.length) {
+          const { error } = await supabaseAdmin.from("dexa_segments").insert(rows);
+          if (error) throw new Error(`Errore DEXA: ${error.message}`);
+        }
       }
     }
 
-    // Esami ematochimici (possono essere più di uno con date diverse)
-    if (extracted.blood_tests?.length) {
+    // Esami ematochimici (collegati alla prima visita per cleanup)
+    if (extracted.blood_tests?.length && visitIds.length) {
       const rows = extracted.blood_tests
         .filter((t) => t.test_date)
-        .map((t) => ({ ...t, visit_id: visitId }));
+        .map((t) => ({ ...t, visit_id: visitIds[0] }));
       if (rows.length) {
         const { error } = await supabaseAdmin.from("blood_tests").insert(rows);
         if (error) throw new Error(`Errore esami: ${error.message}`);
@@ -161,7 +166,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
       .update({ extraction_status: "confirmed" })
       .eq("id", documentId);
 
-    return { visitId };
+    return { visitIds, count: visitIds.length };
   });
 
 // 3) Carica tutti i dati per la dashboard
@@ -241,4 +246,59 @@ export const getDocumentUrl = createServerFn({ method: "POST" })
       .createSignedUrl(doc.storage_path, 60 * 5);
     if (error) throw new Error(error.message);
     return { url: signed.signedUrl, name: doc.original_name };
+  });
+
+// 7) Hard reset: cancella TUTTI i dati (visite, esami, file, profilo)
+const FAKE_UUID = "00000000-0000-0000-0000-000000000000";
+
+export const hardResetAllData = createServerFn({ method: "POST" })
+  .inputValidator((input: { confirm: string }) => {
+    if (input.confirm !== "RESET") throw new Error("Conferma mancante: scrivi RESET");
+    return input;
+  })
+  .handler(async () => {
+    // 1) Svuota lo storage bucket "referti"
+    const { data: files } = await supabaseAdmin.storage.from("referti").list("referti", { limit: 1000 });
+    if (files && files.length) {
+      const paths = files.map((f) => `referti/${f.name}`);
+      await supabaseAdmin.storage.from("referti").remove(paths);
+    }
+
+    // 2) Cancella le tabelle (figli prima, poi padri)
+    await supabaseAdmin.from("blood_tests").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("dexa_segments").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("body_composition").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("circumferences").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("visits").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("documents").delete().neq("id", FAKE_UUID);
+
+    // 3) Reset profilo (mantiene la riga ma azzera i campi)
+    const { data: prof } = await supabaseAdmin.from("profile").select("id").maybeSingle();
+    if (prof) {
+      await supabaseAdmin
+        .from("profile")
+        .update({
+          full_name: null,
+          email: null,
+          phone: null,
+          profession: null,
+          age: null,
+          birth_date: null,
+          height_cm: null,
+          target_weight_kg: null,
+          family_doctor: null,
+          goal: null,
+          allergies: null,
+          intolerances: null,
+          family_history: {},
+          pathologies: {},
+          medications: [],
+          food_preferences: {},
+          food_diary: {},
+          weight_history: {},
+        } as never)
+        .eq("id", prof.id);
+    }
+
+    return { ok: true };
   });

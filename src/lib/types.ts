@@ -89,16 +89,19 @@ export interface DocumentRow {
   extraction_status: "pending" | "extracted" | "confirmed" | "failed";
 }
 
-// Risultato dell'estrazione AI
-export interface ExtractedData {
-  visit: {
-    visit_date: string | null;
-    weight_kg: number | null;
-    notes: string | null;
-  };
+// Una singola visita estratta dal documento (con tutti i dati a essa collegati)
+export interface ExtractedVisit {
+  visit_date: string | null;
+  weight_kg: number | null;
+  notes: string | null;
   circumferences: Circumferences;
   body_composition: BodyComposition;
   dexa_segments: DexaSegment[];
+}
+
+// Risultato completo dell'estrazione AI: N visite + esami + profilo
+export interface ExtractedData {
+  visits: ExtractedVisit[];
   blood_tests: Array<Omit<BloodTest, "id" | "notes"> & { notes?: string | null }>;
   profile_updates: ProfileUpdates;
 }
