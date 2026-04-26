@@ -5,21 +5,97 @@ import mammoth from "mammoth";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash";
 
-export async function extractTextFromDoc(buffer: ArrayBuffer, fileName: string): Promise<string> {
+export type ExtractionInput =
+  | { kind: "text"; text: string }
+  | { kind: "binary"; base64: string; mimeType: string; fileName: string };
+
+/**
+ * Tenta di estrarre il testo dal documento.
+ * - .docx → mammoth
+ * - .txt → decode UTF-8
+ * - .doc legacy → estrazione "best-effort" leggendo le stringhe UTF-16 dal CFB.
+ *   Se il risultato è troppo povero, restituisce kind:"binary" così l'AI può
+ *   leggere il file direttamente.
+ */
+export async function extractDocumentInput(
+  buffer: ArrayBuffer,
+  fileName: string,
+  mimeType: string
+): Promise<ExtractionInput> {
   const lower = fileName.toLowerCase();
+
   if (lower.endsWith(".docx")) {
     const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
-    return result.value;
+    const text = result.value.trim();
+    if (!text) throw new Error("Il documento .docx sembra vuoto");
+    return { kind: "text", text };
   }
-  if (lower.endsWith(".doc")) {
-    throw new Error(
-      "I file .doc (formato Word legacy) non sono supportati. Apri il file in Word/Pages/Google Docs e salvalo come .docx, poi ricarica."
-    );
-  }
+
   if (lower.endsWith(".txt")) {
-    return new TextDecoder().decode(buffer);
+    const text = new TextDecoder().decode(buffer).trim();
+    if (!text) throw new Error("Il file .txt è vuoto");
+    return { kind: "text", text };
   }
-  throw new Error(`Formato file non supportato: ${fileName}. Usa .docx o .txt.`);
+
+  if (lower.endsWith(".doc")) {
+    // 1) Tentativo estrazione naive del testo dal binario .doc
+    const naive = extractTextFromLegacyDoc(buffer);
+    if (naive && naive.length > 200) {
+      return { kind: "text", text: naive };
+    }
+    // 2) Fallback: invia il binario direttamente all'AI
+    const base64 = bufferToBase64(buffer);
+    return {
+      kind: "binary",
+      base64,
+      mimeType: mimeType || "application/msword",
+      fileName,
+    };
+  }
+
+  if (lower.endsWith(".pdf")) {
+    const base64 = bufferToBase64(buffer);
+    return { kind: "binary", base64, mimeType: "application/pdf", fileName };
+  }
+
+  throw new Error(`Formato non supportato: ${fileName}. Usa .doc, .docx, .pdf o .txt.`);
+}
+
+function bufferToBase64(buffer: ArrayBuffer): string {
+  return Buffer.from(buffer).toString("base64");
+}
+
+/**
+ * Estrazione "best-effort" del testo da un file .doc (Word 97-2003 / CFB).
+ * I file .doc memorizzano il testo nello stream "WordDocument" prevalentemente
+ * come UTF-16LE. Qui leggiamo l'intero buffer come UTF-16LE, conserviamo i
+ * caratteri stampabili e collassiamo gli spazi. Funziona bene per referti
+ * testuali; per documenti complessi useremo il fallback binario all'AI.
+ */
+function extractTextFromLegacyDoc(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  // Decodifica UTF-16LE
+  let utf16 = "";
+  try {
+    utf16 = new TextDecoder("utf-16le", { fatal: false }).decode(bytes);
+  } catch {
+    utf16 = "";
+  }
+  const cleaned16 = cleanExtractedText(utf16);
+
+  // Decodifica latin1 (alcuni .doc hanno testo a 8 bit)
+  const latin1 = new TextDecoder("latin1").decode(bytes);
+  const cleaned8 = cleanExtractedText(latin1);
+
+  return cleaned16.length >= cleaned8.length ? cleaned16 : cleaned8;
+}
+
+function cleanExtractedText(raw: string): string {
+  // Tieni lettere, numeri, punteggiatura comune e spazi/righe
+  const filtered = raw.replace(/[^\p{L}\p{N}\s.,;:()\-\/%°'"+*=<>!?€$@&\n\r\t]/gu, " ");
+  // Collassa whitespace
+  const collapsed = filtered.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
+  return collapsed.trim();
 }
 
 const EXTRACTION_SCHEMA = {
