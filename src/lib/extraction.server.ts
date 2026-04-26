@@ -202,11 +202,29 @@ const EXTRACTION_SCHEMA = {
   },
 };
 
-export async function extractWithAI(documentText: string): Promise<unknown> {
+export async function extractWithAI(input: ExtractionInput): Promise<unknown> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY non configurata");
 
   const systemPrompt = `Sei un assistente che estrae dati clinici da referti dietologici italiani. Rispondi SOLO usando il tool extract_dietologia. Le date in italiano abbreviate (es. "13,6,25") vanno trasformate in formato ISO YYYY-MM-DD assumendo l'anno 20XX. Se un valore non è presente o è vuoto nel testo, restituisci null. Le tabelle DEXA segmental hanno coppie ordinate: braccio destro, braccio sinistro, gamba destra, gamba sinistra, tronco.`;
+
+  // Costruisci il messaggio user (testo o multipart con file inline)
+  const userContent =
+    input.kind === "text"
+      ? `Ecco il testo del referto da analizzare:\n\n${input.text}`
+      : ([
+          {
+            type: "text",
+            text: `Ecco il referto allegato (${input.fileName}). Estrai i dati strutturati.`,
+          },
+          {
+            type: "file",
+            file: {
+              filename: input.fileName,
+              file_data: `data:${input.mimeType};base64,${input.base64}`,
+            },
+          },
+        ] as unknown);
 
   const response = await fetch(GATEWAY_URL, {
     method: "POST",
@@ -218,7 +236,7 @@ export async function extractWithAI(documentText: string): Promise<unknown> {
       model: MODEL,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Ecco il testo del referto da analizzare:\n\n${documentText}` },
+        { role: "user", content: userContent },
       ],
       tools: [{ type: "function", function: EXTRACTION_SCHEMA }],
       tool_choice: { type: "function", function: { name: "extract_dietologia" } },
@@ -241,6 +259,6 @@ export async function extractWithAI(documentText: string): Promise<unknown> {
   };
 
   const args = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-  if (!args) throw new Error("L'AI non ha restituito dati strutturati");
+  if (!args) throw new Error("L'AI non ha restituito dati strutturati dal documento");
   return JSON.parse(args);
 }
