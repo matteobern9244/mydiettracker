@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Upload, Loader2, CheckCircle2, AlertCircle, FileText, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Upload, Loader2, CheckCircle2, AlertCircle, FileText, ChevronLeft, ChevronRight, Plus, Trash2, RefreshCw } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -10,10 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { uploadAndExtract, saveConfirmedData } from "@/lib/dashboard.functions";
+import { uploadDocument, processExtraction, getExtractionStatus, saveConfirmedData } from "@/lib/dashboard.functions";
 import type { ExtractedData, ExtractedVisit, Circumferences, BodyComposition, DexaSegment, DexaSegmentKey } from "@/lib/types";
 
-type Step = "upload" | "extracting" | "review" | "saving";
+type Step = "upload" | "processing" | "review" | "saving" | "error";
 
 const SEGMENT_LABELS: Record<string, string> = {
   right_arm: "Braccio destro",
