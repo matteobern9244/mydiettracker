@@ -436,10 +436,25 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const statusFn = useServerFn(getExtractionStatus);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>(() => readCooldowns());
+
+  // Pulisce cooldown scaduti all'avvio e quando si aggiornano
+  useEffect(() => {
+    const t = Date.now();
+    const cleaned: Record<string, number> = {};
+    for (const [id, until] of Object.entries(cooldowns)) {
+      if (until > t) cleaned[id] = until;
+    }
+    if (Object.keys(cleaned).length !== Object.keys(cooldowns).length) {
+      setCooldowns(cleaned);
+      writeCooldowns(cleaned);
+    }
+  }, [cooldowns]);
 
   const hasActive = documents.some(
     (d) => d.extraction_status === "processing" || (retryingId === d.id && d.extraction_status === "pending"),
   );
+  const hasCooldown = Object.values(cooldowns).some((until) => until > now);
 
   // Tick ogni secondo solo se c'è almeno un'estrazione in corso
   useEffect(() => {
