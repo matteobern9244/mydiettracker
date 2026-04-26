@@ -630,11 +630,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                 {(d.extraction_status === "failed" || d.extraction_status === "pending") && (
                   <Button
                     size="sm"
-                    onClick={() => handleRetry(d.id)}
-                    disabled={isRetrying}
+                    onClick={() => handleRetry(d.id, d.extraction_status)}
+                    disabled={retryDisabled}
+                    title={cooldownLeftSec > 0 ? `Riprovabile tra ${cooldownLeftSec}s` : undefined}
                   >
                     <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
-                    Riprova
+                    {cooldownLeftSec > 0 ? `Riprova (${cooldownLeftSec}s)` : "Riprova"}
                   </Button>
                 )}
                 {(d.extraction_status === "extracted" || d.extraction_status === "confirmed") && (
