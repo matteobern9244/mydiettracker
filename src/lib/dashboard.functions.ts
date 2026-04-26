@@ -3,7 +3,84 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { extractDocumentInput, extractWithAI } from "@/lib/extraction.server";
 import type { ExtractedData } from "@/lib/types";
 
-// 1a) Upload veloce: carica il file in storage + crea record documento.
+// Calcola SHA-256 esadecimale del contenuto del file usando Web Crypto.
+// Disponibile sia in Node 18+ sia nel runtime Worker.
+async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  const bytes = new Uint8Array(digest);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+// Esegue upload + insert del record documento. Estratto in helper così che
+// `uploadDocument` (con check duplicati) e `replaceDocument` (che cancella
+// prima il vecchio) possano riutilizzare lo stesso flusso.
+async function uploadAndInsertDocument(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  userId: string,
+  file: File,
+  contentHash: string,
+): Promise<{ documentId: string }> {
+  const buffer = await file.arrayBuffer();
+  const ts = Date.now();
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `referti/${userId}/${ts}_${safeName}`;
+
+  const uploadRes = await supabase.storage
+    .from("referti")
+    .upload(path, buffer, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+  if (uploadRes.error) throw new Error(`Storage error: ${uploadRes.error.message}`);
+
+  const { data: docRow, error: docErr } = await supabase
+    .from("documents")
+    .insert({
+      user_id: userId,
+      original_name: file.name,
+      storage_path: path,
+      size_bytes: file.size,
+      mime_type: file.type || null,
+      extraction_status: "pending",
+      extraction_error: null,
+      content_hash: contentHash,
+    } as never)
+    .select("id")
+    .single();
+  if (docErr || !docRow) {
+    // Rollback: rimuovi il file appena caricato per non lasciare orfani
+    await supabase.storage.from("referti").remove([path]).catch(() => undefined);
+    throw new Error(`DB error: ${docErr?.message ?? "no doc"}`);
+  }
+  return { documentId: docRow.id };
+}
+
+// Cancella un documento esistente: rimuove file in storage, eventuali visite
+// collegate (con cascade su circ/bc/dexa via FK), poi la riga `documents`.
+async function deleteDocumentAndRelated(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  documentId: string,
+): Promise<void> {
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("storage_path")
+    .eq("id", documentId)
+    .single();
+  // Cancella visite collegate (le tabelle figlie hanno FK ON DELETE CASCADE
+  // su visit_id; circ/bc/dexa scompaiono insieme alla visita).
+  await supabase.from("visits").delete().eq("document_id", documentId);
+  if (doc?.storage_path) {
+    await supabase.storage.from("referti").remove([doc.storage_path]).catch(() => undefined);
+  }
+  await supabase.from("documents").delete().eq("id", documentId);
+}
+
+// 1a) Upload veloce: calcola hash, controlla duplicati per utente,
+//     poi carica il file in storage + crea record documento.
 export const uploadDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => {
@@ -17,38 +94,62 @@ export const uploadDocument = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { file } = data;
     const { supabase, userId } = context;
+
+    // 1) hash sul contenuto per identificare file identici già caricati dallo
+    //    stesso utente (scope per utente, ignorato se hash NULL su record vecchi).
     const buffer = await file.arrayBuffer();
+    const contentHash = await sha256Hex(buffer);
 
-    const ts = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    // Path "per utente" così le policy storage filtrano per cartella e restano leggibili
-    const path = `referti/${userId}/${ts}_${safeName}`;
-
-    // Carica con il client AUTENTICATO così Storage popola owner = auth.uid()
-    const uploadRes = await supabase.storage
-      .from("referti")
-      .upload(path, buffer, {
-        contentType: file.type || "application/octet-stream",
-        upsert: false,
-      });
-    if (uploadRes.error) throw new Error(`Storage error: ${uploadRes.error.message}`);
-
-    const { data: docRow, error: docErr } = await supabase
+    const { data: existing } = await supabase
       .from("documents")
-      .insert({
-        user_id: userId,
-        original_name: file.name,
-        storage_path: path,
-        size_bytes: file.size,
-        mime_type: file.type || null,
-        extraction_status: "pending",
-        extraction_error: null,
-      } as never)
-      .select("id")
-      .single();
-    if (docErr || !docRow) throw new Error(`DB error: ${docErr?.message ?? "no doc"}`);
+      .select("id, original_name, uploaded_at, extraction_status")
+      .eq("content_hash", contentHash)
+      .maybeSingle();
 
-    return { documentId: docRow.id };
+    if (existing) {
+      // Non carichiamo nulla: il client mostrerà la scelta sostituisci/mantieni
+      return {
+        duplicate: true as const,
+        existing: {
+          documentId: existing.id,
+          originalName: existing.original_name as string,
+          uploadedAt: existing.uploaded_at as string,
+          status: existing.extraction_status as string,
+        },
+      };
+    }
+
+    const { documentId } = await uploadAndInsertDocument(supabase, userId, file, contentHash);
+    return { duplicate: false as const, documentId };
+  });
+
+// 1a-bis) Sostituzione: cancella il documento esistente e tutto ciò che gli è
+//         collegato, poi carica il nuovo file. Usato quando l'utente sceglie
+//         "Sostituisci" davanti al dialog di duplicato.
+export const replaceDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => {
+    if (!(input instanceof FormData)) throw new Error("Expected FormData");
+    const file = input.get("file");
+    const existingId = input.get("existingDocumentId");
+    if (!(file instanceof File)) throw new Error("Nessun file caricato");
+    if (file.size === 0) throw new Error("File vuoto");
+    if (file.size > 20 * 1024 * 1024) throw new Error("File troppo grande (max 20MB)");
+    if (typeof existingId !== "string" || !existingId) throw new Error("ID documento mancante");
+    return { file, existingDocumentId: existingId };
+  })
+  .handler(async ({ data, context }) => {
+    const { file, existingDocumentId } = data;
+    const { supabase, userId } = context;
+    const buffer = await file.arrayBuffer();
+    const contentHash = await sha256Hex(buffer);
+
+    // Cancella il vecchio (RLS scopa per utente: nessun rischio di toccare
+    // documenti altrui anche se l'ID viene manipolato lato client).
+    await deleteDocumentAndRelated(supabase, existingDocumentId);
+
+    const { documentId } = await uploadAndInsertDocument(supabase, userId, file, contentHash);
+    return { documentId };
   });
 
 // 1b) Job di estrazione AI. Usa supabaseAdmin per scaricare il file dallo storage

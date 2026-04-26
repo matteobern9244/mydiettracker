@@ -10,11 +10,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { uploadDocument, processExtraction, getExtractionStatus, saveConfirmedData } from "@/lib/dashboard.functions";
+import { uploadDocument, processExtraction, getExtractionStatus, saveConfirmedData, replaceDocument } from "@/lib/dashboard.functions";
 import { withAuth } from "@/lib/server-call";
 import type { ExtractedData, ExtractedVisit, Circumferences, BodyComposition, DexaSegment, DexaSegmentKey } from "@/lib/types";
 
-type Step = "upload" | "processing" | "review" | "saving" | "error";
+type Step = "upload" | "duplicate" | "processing" | "review" | "saving" | "error";
+
+interface DuplicateInfo {
+  documentId: string;
+  originalName: string;
+  uploadedAt: string;
+  status: string;
+}
 
 const SEGMENT_LABELS: Record<string, string> = {
   right_arm: "Braccio destro",
@@ -58,14 +65,17 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [activeIdx, setActiveIdx] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qc = useQueryClient();
   const uploadFnRaw = useServerFn(uploadDocument);
+  const replaceFnRaw = useServerFn(replaceDocument);
   const processFnRaw = useServerFn(processExtraction);
   const statusFnRaw = useServerFn(getExtractionStatus);
   const saveFnRaw = useServerFn(saveConfirmedData);
   const uploadFn = withAuth(uploadFnRaw);
+  const replaceFn = withAuth(replaceFnRaw);
   const processFn = withAuth(processFnRaw);
   const statusFn = withAuth(statusFnRaw);
   const saveFn = withAuth(saveFnRaw);
@@ -84,6 +94,18 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     setActiveIdx(0);
     setErrorMsg(null);
     setProcessingElapsed(0);
+    setDuplicate(null);
+  };
+
+  // Avvia il job di estrazione e il polling. Riutilizzato sia dopo un upload
+  // pulito sia dopo una sostituzione (entrambi finiscono con un nuovo docId).
+  const startExtractionFor = (docId: string) => {
+    setDocumentId(docId);
+    setStep("processing");
+    processFn({ data: { documentId: docId } }).catch(() => {
+      // ignora: lo stato reale lo legge il polling dal DB
+    });
+    startPolling(docId);
   };
 
   // Polling sullo status del documento
@@ -153,14 +175,36 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setStep("processing");
     },
     onSuccess: (res) => {
-      setDocumentId(res.documentId);
+      if (res.duplicate) {
+        // File identico già caricato dall'utente: chiediamo cosa fare prima di
+        // spendere risorse AI per estrarre di nuovo.
+        setDuplicate(res.existing);
+        setStep("duplicate");
+        return;
+      }
       // Fire-and-forget: avviamo il job ma non aspettiamo la risposta HTTP.
-      // Anche se il proxy chiude la connessione, il job continua server-side
-      // e il risultato viene scritto nel DB. Il polling lo recupera.
-      processFn({ data: { documentId: res.documentId } }).catch(() => {
-        // ignora: lo stato reale lo legge il polling dal DB
-      });
-      startPolling(res.documentId);
+      startExtractionFor(res.documentId);
+    },
+    onError: (e: Error) => {
+      setErrorMsg(e.message);
+      setStep("error");
+    },
+  });
+
+  const replaceMut = useMutation({
+    mutationFn: async ({ f, existingDocumentId }: { f: File; existingDocumentId: string }) => {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("existingDocumentId", existingDocumentId);
+      return replaceFn({ data: fd });
+    },
+    onMutate: () => {
+      setErrorMsg(null);
+      setStep("processing");
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      startExtractionFor(res.documentId);
     },
     onError: (e: Error) => {
       setErrorMsg(e.message);
@@ -243,6 +287,7 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         <DialogHeader>
           <DialogTitle>
             {step === "upload" && "Carica un nuovo referto"}
+            {step === "duplicate" && "Documento già presente"}
             {step === "processing" && "L'AI sta leggendo l'intero referto…"}
             {step === "review" && `Conferma i dati estratti${data ? ` · ${data.visits.length} ${data.visits.length === 1 ? "visita" : "visite"}` : ""}`}
             {step === "saving" && "Sto salvando…"}
@@ -250,6 +295,7 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Carica il file (.doc, .docx, .pdf, .txt). Verranno estratte tutte le visite presenti."}
+            {step === "duplicate" && "Hai già caricato un file identico. Scegli se sostituirlo o mantenere quello esistente."}
             {step === "processing" && "Può richiedere fino a 1–2 minuti per documenti complessi. Puoi chiudere questa finestra: il lavoro continua in background."}
             {step === "review" && "Naviga tra le visite con le frecce. Controlla e correggi i campi prima di salvarli."}
             {step === "error" && "Si è verificato un problema durante l'analisi del documento."}
@@ -281,6 +327,26 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
             </label>
+          </div>
+        )}
+
+        {step === "duplicate" && duplicate && (
+          <div className="space-y-4 py-4">
+            <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+              <AlertCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">File identico già presente</p>
+                <p className="text-muted-foreground">
+                  Avevi caricato <span className="font-medium text-foreground">{duplicate.originalName}</span>{" "}
+                  il {new Date(duplicate.uploadedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Se scegli <span className="font-medium text-foreground">Sostituisci</span>, il documento precedente e
+              tutti i dati che ne erano stati salvati (visite, circonferenze, composizione, DEXA) verranno eliminati,
+              poi il nuovo file verrà analizzato dall'AI.
+            </p>
           </div>
         )}
 
@@ -337,6 +403,21 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               <Button variant="ghost" onClick={() => handleClose(false)}>Annulla</Button>
               <Button disabled={!file} onClick={() => file && uploadMut.mutate(file)}>
                 Analizza con AI
+              </Button>
+            </>
+          )}
+          {step === "duplicate" && duplicate && (
+            <>
+              <Button variant="ghost" onClick={() => handleClose(false)}>
+                Mantieni esistente
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!file || replaceMut.isPending}
+                onClick={() => file && replaceMut.mutate({ f: file, existingDocumentId: duplicate.documentId })}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sostituisci e analizza
               </Button>
             </>
           )}
