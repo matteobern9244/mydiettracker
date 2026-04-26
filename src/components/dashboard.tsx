@@ -728,7 +728,7 @@ function scrollToKpi() {
 function DangerZone() {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
-  const resetFn = useServerFn(hardResetAllData);
+  const resetFn = withAuth(useServerFn(hardResetAllData));
   const resetMut = useMutation({
     mutationFn: () => resetFn({ data: { confirm: "RESET" } }),
     onSuccess: () => {
