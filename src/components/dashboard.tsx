@@ -582,6 +582,9 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
           const isActive = d.extraction_status === "processing" || (isRetrying && d.extraction_status === "pending");
           const elapsedMs = isActive ? Math.max(0, now - new Date(d.uploaded_at).getTime()) : 0;
           const pct = isActive ? Math.round(estimateProgress(elapsedMs) * 100) : 0;
+          const cooldownUntil = cooldowns[d.id] ?? 0;
+          const cooldownLeftSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+          const retryDisabled = isRetrying || d.extraction_status === "processing" || cooldownLeftSec > 0;
           const elapsedSec = Math.round(elapsedMs / 1000);
 
           return (
