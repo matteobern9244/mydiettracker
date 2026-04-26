@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
-import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil } from "lucide-react";
+import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ import {
   deleteVisit,
   getDocumentUrl,
   hardResetAllData,
+  processExtraction,
+  getExtractionStatus,
 } from "@/lib/dashboard.functions";
 import { HardResetDialog } from "@/components/hard-reset-dialog";
 import {
@@ -38,7 +40,7 @@ import {
   buildBodyCompInsight,
   buildCircInsight,
 } from "@/lib/insights";
-import type { VisitFull, BloodTest } from "@/lib/types";
+import type { VisitFull, BloodTest, DocumentRow, ExtractionStatus } from "@/lib/types";
 
 export function Dashboard() {
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -375,6 +377,9 @@ export function Dashboard() {
               </TabsContent>
             </Tabs>
 
+            {/* Documenti caricati con stato estrazione */}
+            <DocumentsPanel documents={documents as DocumentRow[]} />
+
             {/* Zona pericolosa */}
             <DangerZone />
           </>
@@ -383,6 +388,125 @@ export function Dashboard() {
 
       <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
     </div>
+  );
+}
+
+const STATUS_META: Record<ExtractionStatus, { label: string; tone: string; icon: React.ReactNode }> = {
+  pending: { label: "In attesa", tone: "bg-muted text-muted-foreground border-border", icon: <FileText className="h-3.5 w-3.5" /> },
+  processing: { label: "Elaborazione…", tone: "bg-primary/10 text-primary border-primary/30", icon: <Activity className="h-3.5 w-3.5 animate-pulse" /> },
+  extracted: { label: "Estratto · da confermare", tone: "bg-warning/20 text-warning-foreground border-warning/40", icon: <FileText className="h-3.5 w-3.5" /> },
+  confirmed: { label: "Confermato", tone: "bg-success/15 text-success border-success/30", icon: <FileText className="h-3.5 w-3.5" /> },
+  failed: { label: "Errore", tone: "bg-destructive/15 text-destructive border-destructive/30", icon: <FileText className="h-3.5 w-3.5" /> },
+};
+
+function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
+  const qc = useQueryClient();
+  const getDocUrl = useServerFn(getDocumentUrl);
+  const processFn = useServerFn(processExtraction);
+  const statusFn = useServerFn(getExtractionStatus);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  if (documents.length === 0) return null;
+
+  const handleDownload = async (id: string) => {
+    try {
+      const { url } = await getDocUrl({ data: { documentId: id } });
+      window.open(url, "_blank");
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const handleRetry = async (id: string) => {
+    setRetryingId(id);
+    try {
+      // Fire-and-forget: il job continua server-side anche se la connessione cade
+      processFn({ data: { documentId: id } }).catch(() => {});
+      toast.info("Estrazione riavviata. Controllo lo stato…");
+      // Polling leggero per aggiornare la dashboard
+      const start = Date.now();
+      const tick = async () => {
+        const { status } = await statusFn({ data: { documentId: id } });
+        if (status === "extracted" || status === "confirmed" || status === "failed") {
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
+          setRetryingId((cur) => (cur === id ? null : cur));
+          if (status === "failed") toast.error("Estrazione fallita di nuovo.");
+          else toast.success("Estrazione completata.");
+          return;
+        }
+        if (Date.now() - start > 3 * 60 * 1000) {
+          setRetryingId((cur) => (cur === id ? null : cur));
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
+          return;
+        }
+        setTimeout(tick, 3000);
+      };
+      setTimeout(tick, 2000);
+    } catch (e) {
+      toast.error((e as Error).message);
+      setRetryingId(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="h-4 w-4" /> Documenti caricati
+        </CardTitle>
+        <CardDescription>Stato di estrazione per ogni referto inviato.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {documents.map((d) => {
+          const meta = STATUS_META[d.extraction_status];
+          const isRetrying = retryingId === d.id || d.extraction_status === "processing";
+          return (
+            <div
+              key={d.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/50 p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium truncate max-w-[260px] sm:max-w-none">{d.original_name}</p>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${meta.tone}`}
+                  >
+                    {meta.icon}
+                    {isRetrying && d.extraction_status !== "extracted" && d.extraction_status !== "confirmed"
+                      ? "Elaborazione…"
+                      : meta.label}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Caricato il {formatDate(d.uploaded_at)}
+                </p>
+                {d.extraction_status === "failed" && d.extraction_error && (
+                  <p className="mt-1.5 text-xs text-destructive">
+                    {d.extraction_error}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleDownload(d.id)}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  File
+                </Button>
+                {(d.extraction_status === "failed" || d.extraction_status === "pending") && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleRetry(d.id)}
+                    disabled={isRetrying}
+                  >
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+                    Riprova
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
