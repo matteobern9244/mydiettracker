@@ -167,7 +167,7 @@ export function Dashboard() {
         ) : (
           <>
             {/* HEADER RIEPILOGATIVO + OBIETTIVO */}
-            <Card className="overflow-hidden border-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
+            <Card id="kpi-section" className="overflow-hidden border-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
               <CardContent className="p-6 sm:p-8">
                 <div className="grid gap-6 sm:grid-cols-3">
                   <div>
@@ -446,9 +446,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
         if (d.extraction_status === "extracted") {
           toast.success(`Estrazione completata: ${d.original_name}`, {
             description: "Apri il referto dalla lista per rivedere e confermare i dati.",
+            action: { label: "Vai ai risultati", onClick: () => scrollToKpi() },
           });
         } else if (d.extraction_status === "confirmed") {
-          toast.success(`Dati salvati: ${d.original_name}`);
+          toast.success(`Dati salvati: ${d.original_name}`, {
+            action: { label: "Vai ai risultati", onClick: () => scrollToKpi() },
+          });
         } else if (d.extraction_status === "failed") {
           toast.error(`Estrazione fallita: ${d.original_name}`, {
             description: d.extraction_error ?? "Riprova dalla lista documenti.",
@@ -569,6 +572,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                     Riprova
                   </Button>
                 )}
+                {(d.extraction_status === "extracted" || d.extraction_status === "confirmed") && (
+                  <Button size="sm" onClick={() => scrollToKpi()}>
+                    <Activity className="mr-1.5 h-3.5 w-3.5" />
+                    Vai ai risultati
+                  </Button>
+                )}
               </div>
             </div>
           );
@@ -578,7 +587,14 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   );
 }
 
-
+function scrollToKpi() {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById("kpi-section");
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.add("ring-2", "ring-primary/60");
+  setTimeout(() => el.classList.remove("ring-2", "ring-primary/60"), 1500);
+}
 function DangerZone() {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
