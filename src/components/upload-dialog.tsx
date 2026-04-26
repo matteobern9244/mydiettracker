@@ -287,6 +287,7 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         <DialogHeader>
           <DialogTitle>
             {step === "upload" && "Carica un nuovo referto"}
+            {step === "duplicate" && "Documento già presente"}
             {step === "processing" && "L'AI sta leggendo l'intero referto…"}
             {step === "review" && `Conferma i dati estratti${data ? ` · ${data.visits.length} ${data.visits.length === 1 ? "visita" : "visite"}` : ""}`}
             {step === "saving" && "Sto salvando…"}
@@ -294,6 +295,7 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Carica il file (.doc, .docx, .pdf, .txt). Verranno estratte tutte le visite presenti."}
+            {step === "duplicate" && "Hai già caricato un file identico. Scegli se sostituirlo o mantenere quello esistente."}
             {step === "processing" && "Può richiedere fino a 1–2 minuti per documenti complessi. Puoi chiudere questa finestra: il lavoro continua in background."}
             {step === "review" && "Naviga tra le visite con le frecce. Controlla e correggi i campi prima di salvarli."}
             {step === "error" && "Si è verificato un problema durante l'analisi del documento."}
