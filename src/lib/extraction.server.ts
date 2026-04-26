@@ -250,22 +250,36 @@ ESAMINA L'INTERO DOCUMENTO. Non fermarti alla prima visita o alla prima pagina. 
           },
         ] as unknown);
 
-  const response = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-      tools: [{ type: "function", function: EXTRACTION_SCHEMA }],
-      tool_choice: { type: "function", function: { name: "extract_dietologia" } },
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        tools: [{ type: "function", function: EXTRACTION_SCHEMA }],
+        tool_choice: { type: "function", function: { name: "extract_dietologia" } },
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") {
+      throw new Error("L'estrazione AI è andata oltre il limite di tempo. Riprova oppure converti il file in .docx più leggero.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const txt = await response.text();
