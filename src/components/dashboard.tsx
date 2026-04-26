@@ -47,10 +47,11 @@ import type { VisitFull, BloodTest, DocumentRow, ExtractionStatus } from "@/lib/
 export function Dashboard() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const qc = useQueryClient();
-  const getData = useServerFn(getDashboardData);
-  const updTarget = useServerFn(updateTargetWeight);
-  const delVisit = useServerFn(deleteVisit);
-  const getDocUrl = useServerFn(getDocumentUrl);
+  const { user, signOut } = useAuth();
+  const getData = withAuth(useServerFn(getDashboardData));
+  const updTarget = withAuth(useServerFn(updateTargetWeight));
+  const delVisit = withAuth(useServerFn(deleteVisit));
+  const getDocUrl = withAuth(useServerFn(getDocumentUrl));
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
