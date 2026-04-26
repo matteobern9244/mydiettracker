@@ -399,12 +399,41 @@ const STATUS_META: Record<ExtractionStatus, { label: string; tone: string; icon:
   failed: { label: "Errore", tone: "bg-destructive/15 text-destructive border-destructive/30", icon: <FileText className="h-3.5 w-3.5" /> },
 };
 
+// Stima asintotica: 1 - exp(-t/τ), cap al 95% finché lo stato non passa a extracted.
+// τ ≈ 25s → a 25s ~63%, a 45s ~83%, a 60s ~91%.
+const EXTRACTION_TAU_MS = 25_000;
+function estimateProgress(elapsedMs: number): number {
+  const raw = 1 - Math.exp(-Math.max(0, elapsedMs) / EXTRACTION_TAU_MS);
+  return Math.min(0.95, raw);
+}
+
 function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const qc = useQueryClient();
   const getDocUrl = useServerFn(getDocumentUrl);
   const processFn = useServerFn(processExtraction);
   const statusFn = useServerFn(getExtractionStatus);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  const hasActive = documents.some(
+    (d) => d.extraction_status === "processing" || (retryingId === d.id && d.extraction_status === "pending"),
+  );
+
+  // Tick ogni secondo solo se c'è almeno un'estrazione in corso
+  useEffect(() => {
+    if (!hasActive) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [hasActive]);
+
+  // Polling automatico della dashboard ogni 5s mentre c'è processing
+  useEffect(() => {
+    if (!hasActive) return;
+    const t = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    }, 5000);
+    return () => clearInterval(t);
+  }, [hasActive, qc]);
 
   if (documents.length === 0) return null;
 
@@ -420,10 +449,8 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const handleRetry = async (id: string) => {
     setRetryingId(id);
     try {
-      // Fire-and-forget: il job continua server-side anche se la connessione cade
       processFn({ data: { documentId: id } }).catch(() => {});
-      toast.info("Estrazione riavviata. Controllo lo stato…");
-      // Polling leggero per aggiornare la dashboard
+      toast.info("Estrazione riavviata.");
       const start = Date.now();
       const tick = async () => {
         const { status } = await statusFn({ data: { documentId: id } });
@@ -459,7 +486,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
       <CardContent className="space-y-2">
         {documents.map((d) => {
           const meta = STATUS_META[d.extraction_status];
-          const isRetrying = retryingId === d.id || d.extraction_status === "processing";
+          const isRetrying = retryingId === d.id;
+          const isActive = d.extraction_status === "processing" || (isRetrying && d.extraction_status === "pending");
+          const elapsedMs = isActive ? Math.max(0, now - new Date(d.uploaded_at).getTime()) : 0;
+          const pct = isActive ? Math.round(estimateProgress(elapsedMs) * 100) : 0;
+          const elapsedSec = Math.round(elapsedMs / 1000);
+
           return (
             <div
               key={d.id}
@@ -472,14 +504,23 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                     className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${meta.tone}`}
                   >
                     {meta.icon}
-                    {isRetrying && d.extraction_status !== "extracted" && d.extraction_status !== "confirmed"
-                      ? "Elaborazione…"
-                      : meta.label}
+                    {isActive ? "Elaborazione…" : meta.label}
                   </span>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   Caricato il {formatDate(d.uploaded_at)}
                 </p>
+
+                {isActive && (
+                  <div className="mt-2 space-y-1">
+                    <Progress value={pct} className="h-1.5" />
+                    <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
+                      <span>~{pct}%</span>
+                      <span>{elapsedSec}s trascorsi</span>
+                    </div>
+                  </div>
+                )}
+
                 {d.extraction_status === "failed" && d.extraction_error && (
                   <p className="mt-1.5 text-xs text-destructive">
                     {d.extraction_error}
@@ -509,6 +550,7 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
     </Card>
   );
 }
+
 
 function DangerZone() {
   const [open, setOpen] = useState(false);
