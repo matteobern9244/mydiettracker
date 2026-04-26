@@ -407,6 +407,28 @@ function estimateProgress(elapsedMs: number): number {
   return Math.min(0.95, raw);
 }
 
+// Cooldown anti-doppio-click sul retry, persistito in localStorage (sopravvive a reload).
+const RETRY_COOLDOWN_MS = 90_000; // 90s
+const RETRY_LS_KEY = "doc_retry_cooldowns_v1";
+
+function readCooldowns(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(RETRY_LS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function writeCooldowns(map: Record<string, number>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RETRY_LS_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
 function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const qc = useQueryClient();
   const getDocUrl = useServerFn(getDocumentUrl);
@@ -414,17 +436,32 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const statusFn = useServerFn(getExtractionStatus);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [cooldowns, setCooldowns] = useState<Record<string, number>>(() => readCooldowns());
+
+  // Pulisce cooldown scaduti all'avvio e quando si aggiornano
+  useEffect(() => {
+    const t = Date.now();
+    const cleaned: Record<string, number> = {};
+    for (const [id, until] of Object.entries(cooldowns)) {
+      if (until > t) cleaned[id] = until;
+    }
+    if (Object.keys(cleaned).length !== Object.keys(cooldowns).length) {
+      setCooldowns(cleaned);
+      writeCooldowns(cleaned);
+    }
+  }, [cooldowns]);
 
   const hasActive = documents.some(
     (d) => d.extraction_status === "processing" || (retryingId === d.id && d.extraction_status === "pending"),
   );
+  const hasCooldown = Object.values(cooldowns).some((until) => until > now);
 
-  // Tick ogni secondo solo se c'è almeno un'estrazione in corso
+  // Tick ogni secondo se c'è un'estrazione in corso o un cooldown attivo (per countdown UI)
   useEffect(() => {
-    if (!hasActive) return;
+    if (!hasActive && !hasCooldown) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [hasActive]);
+  }, [hasActive, hasCooldown]);
 
   // Polling automatico della dashboard ogni 5s mentre c'è processing
   useEffect(() => {
@@ -476,8 +513,26 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
     }
   };
 
-  const handleRetry = async (id: string) => {
+  const handleRetry = async (id: string, currentStatus: ExtractionStatus) => {
+    // Idempotenza: ignora click se già in esecuzione, in processing, o in cooldown
+    if (retryingId === id) return;
+    if (currentStatus === "processing") {
+      toast.info("Estrazione già in corso.");
+      return;
+    }
+    const until = cooldowns[id];
+    if (until && until > Date.now()) {
+      const sec = Math.ceil((until - Date.now()) / 1000);
+      toast.info(`Riprovi tra ${sec}s per evitare job duplicati.`);
+      return;
+    }
+
+    // Imposta subito il cooldown PRIMA della chiamata per bloccare altri click
+    const nextCooldowns = { ...cooldowns, [id]: Date.now() + RETRY_COOLDOWN_MS };
+    setCooldowns(nextCooldowns);
+    writeCooldowns(nextCooldowns);
     setRetryingId(id);
+
     try {
       processFn({ data: { documentId: id } }).catch(() => {});
       toast.info("Estrazione riavviata.");
@@ -487,6 +542,13 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
         if (status === "extracted" || status === "confirmed" || status === "failed") {
           qc.invalidateQueries({ queryKey: ["dashboard"] });
           setRetryingId((cur) => (cur === id ? null : cur));
+          // Estrazione terminata: rimuovi il cooldown così l'utente può ritentare se serve
+          setCooldowns((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            writeCooldowns(next);
+            return next;
+          });
           if (status === "failed") toast.error("Estrazione fallita di nuovo.");
           else toast.success("Estrazione completata.");
           return;
@@ -520,6 +582,9 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
           const isActive = d.extraction_status === "processing" || (isRetrying && d.extraction_status === "pending");
           const elapsedMs = isActive ? Math.max(0, now - new Date(d.uploaded_at).getTime()) : 0;
           const pct = isActive ? Math.round(estimateProgress(elapsedMs) * 100) : 0;
+          const cooldownUntil = cooldowns[d.id] ?? 0;
+          const cooldownLeftSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+          const retryDisabled = isRetrying || d.extraction_status === "processing" || cooldownLeftSec > 0;
           const elapsedSec = Math.round(elapsedMs / 1000);
 
           return (
@@ -565,11 +630,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                 {(d.extraction_status === "failed" || d.extraction_status === "pending") && (
                   <Button
                     size="sm"
-                    onClick={() => handleRetry(d.id)}
-                    disabled={isRetrying}
+                    onClick={() => handleRetry(d.id, d.extraction_status)}
+                    disabled={retryDisabled}
+                    title={cooldownLeftSec > 0 ? `Riprovabile tra ${cooldownLeftSec}s` : undefined}
                   >
                     <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
-                    Riprova
+                    {cooldownLeftSec > 0 ? `Riprova (${cooldownLeftSec}s)` : "Riprova"}
                   </Button>
                 )}
                 {(d.extraction_status === "extracted" || d.extraction_status === "confirmed") && (
