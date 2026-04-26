@@ -51,15 +51,16 @@ import type { VisitFull, BloodTest, DocumentRow, ExtractionStatus } from "@/lib/
 export function Dashboard() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const qc = useQueryClient();
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, signOut } = useAuth();
   const getData = withAuth(useServerFn(getDashboardData));
   const updTarget = withAuth(useServerFn(updateTargetWeight));
   const delVisit = withAuth(useServerFn(deleteVisit));
   const getDocUrl = withAuth(useServerFn(getDocumentUrl));
 
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard"],
+    queryKey: ["dashboard", user?.id ?? "anon"],
     queryFn: () => getData(),
+    enabled: !authLoading && isAuthenticated && !!user?.id,
   });
 
   const visits: VisitFull[] = useMemo(() => {
@@ -199,8 +200,13 @@ export function Dashboard() {
               variant="ghost"
               size="icon"
               onClick={async () => {
+                // Interrompi le query attive e svuota la cache prima del logout
+                // così non parte una richiesta autenticata con token già revocato.
+                await qc.cancelQueries();
                 await signOut();
+                qc.removeQueries({ queryKey: ["dashboard"] });
                 toast.success("Sei uscito.");
+                navigate({ to: "/login", search: { redirect: "/" }, replace: true });
               }}
               title="Esci"
               aria-label="Esci"
