@@ -148,9 +148,11 @@ export function Dashboard() {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
               <Activity className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-base font-semibold leading-none">Il mio percorso</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">{profile?.full_name ?? "Profilo"}</p>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold leading-none truncate">Il mio percorso</h1>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px] sm:max-w-none">
+                {profile?.full_name ?? user?.email ?? "Profilo"}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -160,6 +162,18 @@ export function Dashboard() {
               <span className="sm:hidden">Carica</span>
             </Button>
             <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={async () => {
+                await signOut();
+                toast.success("Sei uscito.");
+              }}
+              title="Esci"
+              aria-label="Esci"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </header>
