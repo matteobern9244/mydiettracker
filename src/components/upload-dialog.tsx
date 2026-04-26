@@ -46,23 +46,96 @@ function makeEmptyVisit(): ExtractedVisit {
   };
 }
 
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_MS = 3 * 60 * 1000; // 3 minuti
+
 export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [data, setData] = useState<ExtractedData | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [processingElapsed, setProcessingElapsed] = useState(0);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qc = useQueryClient();
-  const uploadFn = useServerFn(uploadAndExtract);
+  const uploadFn = useServerFn(uploadDocument);
+  const processFn = useServerFn(processExtraction);
+  const statusFn = useServerFn(getExtractionStatus);
   const saveFn = useServerFn(saveConfirmedData);
 
+  const clearTimers = () => {
+    if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
+    if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
+  };
+
   const reset = () => {
+    clearTimers();
     setStep("upload");
     setFile(null);
     setData(null);
     setDocumentId(null);
     setActiveIdx(0);
+    setErrorMsg(null);
+    setProcessingElapsed(0);
   };
+
+  // Polling sullo status del documento
+  const startPolling = (docId: string) => {
+    clearTimers();
+    const startedAt = Date.now();
+    setProcessingElapsed(0);
+    elapsedTimerRef.current = setInterval(() => {
+      setProcessingElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
+    const poll = async () => {
+      try {
+        const res = await statusFn({ data: { documentId: docId } });
+        if (res.status === "extracted" || res.status === "confirmed") {
+          clearTimers();
+          const ex = res.extracted;
+          if (!ex) {
+            setErrorMsg("L'estrazione si è conclusa ma non sono stati trovati dati.");
+            setStep("error");
+            return;
+          }
+          const visits = ex.visits && ex.visits.length > 0 ? ex.visits : [makeEmptyVisit()];
+          setData({ ...ex, visits });
+          setActiveIdx(0);
+          setStep("review");
+          return;
+        }
+        if (res.status === "failed") {
+          clearTimers();
+          setErrorMsg(res.error ?? "L'estrazione è fallita per un motivo sconosciuto.");
+          setStep("error");
+          return;
+        }
+        // pending o processing → continua
+        if (Date.now() - startedAt > POLL_MAX_MS) {
+          clearTimers();
+          setErrorMsg("L'estrazione sta impiegando troppo tempo. Riprova oppure converti il file in .docx.");
+          setStep("error");
+          return;
+        }
+        pollTimerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+      } catch (e) {
+        // errore di rete: continua a tentare finché non scade il timeout
+        if (Date.now() - startedAt > POLL_MAX_MS) {
+          clearTimers();
+          setErrorMsg((e as Error).message);
+          setStep("error");
+          return;
+        }
+        pollTimerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+      }
+    };
+    pollTimerRef.current = setTimeout(poll, 500);
+  };
+
+  useEffect(() => () => clearTimers(), []);
 
   const uploadMut = useMutation({
     mutationFn: async (f: File) => {
@@ -70,19 +143,37 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       fd.append("file", f);
       return uploadFn({ data: fd });
     },
-    onMutate: () => setStep("extracting"),
+    onMutate: () => {
+      setErrorMsg(null);
+      setStep("processing");
+    },
     onSuccess: (res) => {
       setDocumentId(res.documentId);
-      // Garantisce sempre almeno una visita per il review
-      const ex = res.extracted;
-      const visits = ex.visits && ex.visits.length > 0 ? ex.visits : [makeEmptyVisit()];
-      setData({ ...ex, visits });
-      setActiveIdx(0);
-      setStep("review");
+      // Fire-and-forget: avviamo il job ma non aspettiamo la risposta HTTP.
+      // Anche se il proxy chiude la connessione, il job continua server-side
+      // e il risultato viene scritto nel DB. Il polling lo recupera.
+      processFn({ data: { documentId: res.documentId } }).catch(() => {
+        // ignora: lo stato reale lo legge il polling dal DB
+      });
+      startPolling(res.documentId);
     },
     onError: (e: Error) => {
-      toast.error(e.message);
-      setStep("upload");
+      setErrorMsg(e.message);
+      setStep("error");
+    },
+  });
+
+  const retryMut = useMutation({
+    mutationFn: async (docId: string) => {
+      processFn({ data: { documentId: docId } }).catch(() => { /* idem */ });
+      return docId;
+    },
+    onMutate: () => {
+      setErrorMsg(null);
+      setStep("processing");
+    },
+    onSuccess: (docId) => {
+      startPolling(docId);
     },
   });
 
@@ -105,7 +196,12 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   });
 
   const handleClose = (o: boolean) => {
-    if (!o && (step === "extracting" || step === "saving")) return;
+    if (!o && step === "saving") return;
+    if (!o && step === "processing") {
+      // permettiamo la chiusura: il job continua sul server, l'utente potrà
+      // ritrovare il documento nello storico (estratto o failed).
+      clearTimers();
+    }
     onOpenChange(o);
     if (!o) setTimeout(reset, 300);
   };
@@ -142,13 +238,16 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         <DialogHeader>
           <DialogTitle>
             {step === "upload" && "Carica un nuovo referto"}
-            {step === "extracting" && "L'AI sta leggendo l'intero referto…"}
+            {step === "processing" && "L'AI sta leggendo l'intero referto…"}
             {step === "review" && `Conferma i dati estratti${data ? ` · ${data.visits.length} ${data.visits.length === 1 ? "visita" : "visite"}` : ""}`}
             {step === "saving" && "Sto salvando…"}
+            {step === "error" && "Estrazione non riuscita"}
           </DialogTitle>
           <DialogDescription>
             {step === "upload" && "Carica il file (.doc, .docx, .pdf, .txt). Verranno estratte tutte le visite presenti."}
+            {step === "processing" && "Può richiedere fino a 1–2 minuti per documenti complessi. Puoi chiudere questa finestra: il lavoro continua in background."}
             {step === "review" && "Naviga tra le visite con le frecce. Controlla e correggi i campi prima di salvarli."}
+            {step === "error" && "Si è verificato un problema durante l'analisi del documento."}
           </DialogDescription>
         </DialogHeader>
 
@@ -180,10 +279,30 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
         )}
 
-        {step === "extracting" && (
+        {step === "processing" && (
           <div className="flex flex-col items-center gap-4 py-12">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Estrazione di tutte le visite in corso…</p>
+            <div className="text-center space-y-1">
+              <p className="font-medium">Sto analizzando il referto…</p>
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {processingElapsed}s trascorsi
+              </p>
+            </div>
+          </div>
+        )}
+
+        {step === "error" && (
+          <div className="space-y-4 py-6">
+            <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+              <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-medium text-destructive">Estrazione fallita</p>
+                <p className="text-muted-foreground break-words">{errorMsg}</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Suggerimento: i file <span className="font-mono">.docx</span> testuali sono i più veloci da analizzare. Per i <span className="font-mono">.doc</span> legacy, prova a riaprirli in Word/Pages e salvarli come <span className="font-mono">.docx</span>.
+            </p>
           </div>
         )}
 
@@ -214,6 +333,22 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               <Button disabled={!file} onClick={() => file && uploadMut.mutate(file)}>
                 Analizza con AI
               </Button>
+            </>
+          )}
+          {step === "processing" && (
+            <Button variant="ghost" onClick={() => handleClose(false)}>
+              Chiudi (continua in background)
+            </Button>
+          )}
+          {step === "error" && (
+            <>
+              <Button variant="ghost" onClick={() => handleClose(false)}>Chiudi</Button>
+              {documentId && (
+                <Button onClick={() => retryMut.mutate(documentId)}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Riprova estrazione
+                </Button>
+              )}
             </>
           )}
           {step === "review" && (
