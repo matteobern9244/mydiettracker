@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw, LogOut } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +15,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { UploadDialog } from "@/components/upload-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { InsightCard } from "@/components/insight-card";
+import { SectionFilter, filterByDate, type DatePreset } from "@/components/section-filter";
+
+const dashRoute = getRouteApi("/_authenticated/");
 import {
   getDashboardData,
   updateTargetWeight,
