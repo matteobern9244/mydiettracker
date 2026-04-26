@@ -109,7 +109,7 @@ export function Dashboard() {
   const prevVisit = visits[visits.length - 2] ?? null;
   const firstVisit = visits[0] ?? null;
 
-  const weightSeries = visits
+  const weightSeries = weightVisits
     .filter((v) => v.weight_kg != null)
     .map((v) => ({ date: v.visit_date, peso: Number(v.weight_kg) }));
 
