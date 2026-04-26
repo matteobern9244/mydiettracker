@@ -79,7 +79,7 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
       .from("documents")
       .update({
         extraction_status: "extracted",
-        extraction_raw: extracted as Record<string, unknown>,
+        extraction_raw: extracted as never,
       })
       .eq("id", docRow.id);
 
@@ -160,7 +160,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
     if (Object.keys(updates).length) {
       const { data: prof } = await supabaseAdmin.from("profile").select("id").limit(1).single();
       if (prof) {
-        await supabaseAdmin.from("profile").update(updates).eq("id", prof.id);
+        await supabaseAdmin.from("profile").update(updates as never).eq("id", prof.id);
       }
     }
 
