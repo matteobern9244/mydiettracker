@@ -1,106 +1,133 @@
 
-# 🥗 Dashboard Progressi Dietologici
+# Piano: estrazione completa multi-visita + reset totale
 
-Una dashboard personale (single user) dove carichi il documento `.doc` che ti dà la dietologa e tutto il resto avviene in automatico: AI legge i numeri, te li fa confermare, popola il database, aggiorna grafici e KPI con commenti in linguaggio umano.
-
----
-
-## 🎨 Stile visivo
-
-- **Palette wellness moderna**: verde acqua (teal/aqua) come colore primario, bianchi caldi, accenti corallo per gli alert.
-- **Dual mode**: tema chiaro e tema scuro con toggle in alto a destra (preferenza salvata).
-- Tipografia pulita, card con angoli morbidi, micro-animazioni leggere sui grafici.
-- Mobile-first: la dashboard è perfettamente leggibile anche da telefono.
+Due richieste indipendenti ma legate al ciclo di vita dei dati.
 
 ---
 
-## 📤 Flusso di upload (cuore dell'app)
+## 1. Estrazione di TUTTE le visite dal documento
 
-1. **Pulsante "Carica nuovo referto"** in evidenza nella home.
-2. Trascini o selezioni il file `.doc` (o `.docx`).
-3. Il file viene **archiviato** così com'è (storico consultabile/scaricabile in seguito).
-4. L'AI lo analizza ed estrae:
-   - Dati anagrafici (la prima volta soltanto)
-   - Anamnesi familiare e patologica + terapia
-   - **Misurazioni della visita**: data, peso, circonferenze (braccio, vita, addome, coscia, anche, torace, collo, avambraccio, polso)
-   - **Composizione corporea**: massa grassa %, massa magra kg, massa ossea, BMI, età metabolica, idratazione, grasso viscerale
-   - **DEXA segmental**: massa grassa/magra per braccio dx, braccio sx, gamba dx, gamba sx, tronco
-   - **Esami ematochimici**: emoglobina, glicemia, gamma GT, ALT, AST, colesterolo totale, HDL, trigliceridi (con date diverse, es. Gennaio 25 / Giugno 25)
-   - **Anamnesi alimentare**: colazione, pranzo, cena, spuntini, preferenze, intolleranze
-5. **Schermata di conferma**: vedi una tabella riepilogativa con tutti i campi estratti, modificabili. Click su "Conferma" → tutto va nel database e la dashboard si aggiorna istantaneamente.
-6. Se l'estrazione fallisce su qualche campo, lo segnala in giallo invitandoti a compilarlo manualmente.
+### Problema attuale
+Lo schema AI in `src/lib/extraction.server.ts` dichiara `visit` come **oggetto singolo** (una sola data, un solo peso). Quando il referto contiene più colonne (es. visite del 13.6.25, 31.1.25, ecc.), l'AI ne estrae una sola e ignora le altre. Anche circonferenze, composizione corporea e DEXA sono singoli oggetti, non array.
 
----
+### Modifiche allo schema AI (`src/lib/extraction.server.ts`)
+Riscrivere `EXTRACTION_SCHEMA` con la nuova struttura:
 
-## 📊 Dashboard — sezioni e KPI
+```
+{
+  visits: [
+    {
+      visit_date: "YYYY-MM-DD",
+      weight_kg, notes,
+      circumferences: { arm_cm, waist_cm, ... },     // legate alla visita
+      body_composition: { fat_mass_pct, bmi, ... },
+      dexa_segments: [ { segment, fat_mass_pct, lean_mass_kg } ]
+    },
+    ...                                              // una entry per ogni colonna/data presente nel referto
+  ],
+  blood_tests: [ ... ],                              // restano indipendenti (date proprie)
+  profile_updates: { ... }                           // dati anagrafici, una sola volta
+}
+```
 
-### 1. Header riepilogativo
-- Foto/iniziali, peso attuale, peso obiettivo, **distanza dall'obiettivo** ("-7 kg al traguardo"), barra di avanzamento %.
-- Data ultima visita + countdown "ultima misurazione 23 giorni fa".
+Aggiornare anche il **system prompt** per istruire esplicitamente: «I referti dietologici italiani usano una tabella con **una colonna per ogni visita**. Devi creare un elemento di `visits` per OGNI colonna/data che trovi, anche se alcuni valori sono vuoti. Non saltare nessuna colonna.»
 
-### 2. ⚖️ Peso & BMI
-- **Grafico a linea** del peso nel tempo con tutte le visite, tooltip ricco e annotazioni sulle visite.
-- **KPI**: peso attuale, variazione vs visita precedente, variazione totale dall'inizio, BMI attuale con etichetta ("sovrappeso / obeso classe I" ecc.) e fascia colorata.
-- **Insight automatico**: "Hai perso 5 kg in 4 mesi, ritmo medio -1,2 kg/mese — perfettamente nella fascia salutare."
+### Tipi (`src/lib/types.ts`)
+Sostituire `ExtractedData` con:
 
-### 3. 🧬 Composizione corporea
-- Tre grafici affiancati: **massa grassa %**, **massa magra kg**, **grasso viscerale**.
-- KPI con valore corrente, range ideale e indicatore semaforo (verde/giallo/rosso).
-- **Età metabolica vs età anagrafica** con commento ("hai 33 anni, la tua età metabolica è 47 → 14 anni di gap, in miglioramento di 3 da gennaio").
-- **Mappa corpo segmentale**: silhouette con i 5 segmenti DEXA (braccia, gambe, tronco) colorati in base alla % di grasso, click su un segmento per il dettaglio.
+```ts
+export interface ExtractedVisit {
+  visit_date: string | null;
+  weight_kg: number | null;
+  notes: string | null;
+  circumferences: Circumferences;
+  body_composition: BodyComposition;
+  dexa_segments: DexaSegment[];
+}
 
-### 4. 📏 Circonferenze
-- Grafico multi-linea con vita, addome, braccio, coscia ecc.
-- **Rapporto vita/altezza** evidenziato (indicatore di rischio cardiovascolare): "0,60 — sopra la soglia di rischio (0,50). In calo di 0,03 da gennaio".
-- Variazioni cm dall'ultima visita, mostrate per ogni misura.
+export interface ExtractedData {
+  visits: ExtractedVisit[];
+  blood_tests: Array<...>;
+  profile_updates: ProfileUpdates;
+}
+```
 
-### 5. 🩸 Esami ematochimici
-- Per ogni valore (colesterolo, trigliceridi, HDL, ALT, AST, gamma GT, glicemia, emoglobina): grafico, valore corrente, **range di riferimento clinico**, badge "nella norma / da monitorare / fuori range".
-- **Insight automatico**: "Trigliceridi scesi da 292 a 142 mg/dL — eccellente, ora dentro il range. ALT ancora sopra la norma ma in netto miglioramento."
+### Salvataggio (`src/lib/dashboard.functions.ts` → `saveConfirmedData`)
+Trasformare la logica attuale (una visita) in un **loop**:
+- Per ogni `extracted.visits[i]`:
+  - Inserire row in `visits` (legare `document_id` solo alla prima, oppure a tutte — preferiamo a tutte, così cancellando il documento si rimuovono tutte).
+  - Inserire `circumferences`, `body_composition`, `dexa_segments` con il `visit_id` appena creato.
+- `blood_tests` restano collegati alla prima visita (o a nessuna; meglio: alla prima per semplicità di cleanup).
+- `profile_updates` invariato.
+- Restituire `{ visitIds: [...] }`.
 
-### 6. 🎯 Obiettivo peso
-- Campo modificabile "Peso target" (es. 80 kg).
-- Mostra: kg mancanti, % completata, **proiezione data di arrivo** basata sul ritmo attuale, ritmo settimanale/mensile, totale perso/preso da inizio percorso.
+### Frontend (`src/components/upload-dialog.tsx`)
+Riscrivere `ReviewForm` per gestire un **array di visite**:
+- Selettore/tab in cima: "Visita 1 di N — 13/06/2025", con frecce ◀ ▶ o tabs.
+- Per la visita selezionata mostrare: data, peso, note, circonferenze, composizione, DEXA (le sezioni esistenti).
+- Pulsanti **"+ Aggiungi visita"** e **"Rimuovi questa visita"** in caso l'AI sbagli.
+- La sezione "Esami ematochimici" e "Profilo" restano fuori dalle tab (globali al documento).
+- Validazione: bottone "Conferma e salva" disabilitato se *qualsiasi* visita ha `visit_date` vuota; mostrare badge rosso sulla tab incompleta.
 
-### 7. 📅 Storico visite & file
-- Timeline cronologica di tutte le visite.
-- Per ognuna: data, peso, link per scaricare il `.doc` originale, possibilità di rivedere/modificare i dati estratti, eliminare la visita.
-
-### 8. 💬 Linguaggio umano (insight automatici)
-Generati da regole sui tuoi dati, in italiano semplice. Esempi:
-- "Negli ultimi 3 mesi hai perso 4,9 kg mantenendo la massa magra: stai perdendo grasso, non muscolo. Ottimo segnale."
-- "Il tuo grasso viscerale è 9,5 — sei sceso sotto la soglia di rischio (10). Continua così."
-- "Le tue circonferenze vita e addome calano insieme al peso: il dimagrimento è ben distribuito."
-
----
-
-## 🗄️ Persistenza
-
-Tutto su database con queste aree:
-- **Profilo** (anagrafica, altezza, obiettivo peso)
-- **Visite** (data, peso, note, link al file originale)
-- **Misure circonferenze** (legate alla visita)
-- **Composizione corporea** (legate alla visita, incluso DEXA per segmento)
-- **Esami ematochimici** (legati alla data dell'esame, possono essercene più di uno per visita)
-- **Anamnesi & terapia** (storicizzate, solo l'ultima è "attiva")
-- **File originali** archiviati in storage privato
-
-Niente login (single user come richiesto): la dashboard è tua. In futuro si potrà aggiungere autenticazione senza ribaltare nulla.
+### Toast finale
+"Salvate N visite dal referto" invece di "Visita salvata".
 
 ---
 
-## 🛠️ Cosa attivo dietro le quinte
+## 2. Hard reset totale
 
-- **Lovable Cloud** per database e storage del file `.doc`.
-- **Lovable AI Gateway** per l'estrazione strutturata dal documento (gratuito fino al 13 ottobre 2025, poi pochi centesimi a estrazione).
-- Parser per `.doc`/`.docx` lato server.
+### Backend — nuova server function (`src/lib/dashboard.functions.ts`)
+```ts
+export const hardResetAllData = createServerFn({ method: "POST" })
+  .inputValidator((input: { confirm: "RESET" }) => {
+    if (input.confirm !== "RESET") throw new Error("Conferma mancante");
+    return input;
+  })
+  .handler(async () => {
+    // 1) Lista tutti gli oggetti nello storage e li rimuove
+    const { data: files } = await supabaseAdmin.storage.from("referti").list("referti");
+    if (files?.length) {
+      await supabaseAdmin.storage.from("referti").remove(files.map(f => `referti/${f.name}`));
+    }
+    // 2) Cancella tutte le righe (ordine: figli → padri)
+    await supabaseAdmin.from("blood_tests").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await supabaseAdmin.from("dexa_segments").delete().neq("id", "...");
+    await supabaseAdmin.from("body_composition").delete().neq("id", "...");
+    await supabaseAdmin.from("circumferences").delete().neq("id", "...");
+    await supabaseAdmin.from("visits").delete().neq("id", "...");
+    await supabaseAdmin.from("documents").delete().neq("id", "...");
+    // 3) Reset profilo: azzera campi medici ma mantiene la riga (target_weight_kg = null)
+    const { data: prof } = await supabaseAdmin.from("profile").select("id").maybeSingle();
+    if (prof) {
+      await supabaseAdmin.from("profile").update({
+        full_name: null, email: null, phone: null, profession: null,
+        age: null, height_cm: null, target_weight_kg: null,
+        family_doctor: null, allergies: null, intolerances: null,
+        // jsonb tornano vuoti
+        family_history: {}, pathologies: {}, medications: [],
+        food_preferences: {}, food_diary: {}, weight_history: {},
+      }).eq("id", prof.id);
+    }
+    return { ok: true };
+  });
+```
+
+### Frontend (`src/components/dashboard.tsx`)
+- Nuovo bottone **"Cancella tutti i dati"** in fondo alla dashboard (sezione "Zona pericolosa"), stile `variant="destructive"`, icona `Trash2`.
+- Al click apre un `AlertDialog` (shadcn/ui, già installato in `src/components/ui/alert-dialog.tsx`):
+  - Titolo: "Hard reset totale"
+  - Descrizione: «Verranno cancellati definitivamente: tutte le visite, tutti gli esami, tutti i file caricati e i dati anagrafici. Operazione **irreversibile**.»
+  - Campo input: «Per confermare, scrivi `RESET` nel campo qui sotto»
+  - Bottone "Cancella tutto" abilitato solo se input === "RESET"
+- Al successo: toast "Tutti i dati sono stati cancellati", invalidate query `["dashboard"]`.
 
 ---
 
-## 🚀 Cosa avrai alla fine
+## File toccati
+1. `src/lib/extraction.server.ts` — schema AI (visits[]) + prompt aggiornato
+2. `src/lib/types.ts` — nuovi tipi `ExtractedVisit` + `ExtractedData`
+3. `src/lib/dashboard.functions.ts` — `saveConfirmedData` con loop + nuova `hardResetAllData`
+4. `src/components/upload-dialog.tsx` — review form multi-visita con tab/navigazione
+5. `src/components/dashboard.tsx` — sezione "Zona pericolosa" + AlertDialog di conferma
 
-Una dashboard personale dove:
-1. Apri l'app → vedi subito i tuoi progressi.
-2. Esci dalla dietologa → carichi il `.doc` → 30 secondi di conferma → tutto aggiornato.
-3. Scorri grafici, KPI e commenti in italiano che ti dicono come stai andando davvero.
-4. Lo storico è sempre tuo: dati + file originali, scaricabili quando vuoi.
+Nessuna nuova migration DB necessaria (lo schema attuale supporta già N visite, è solo il pipe di estrazione/UI a essere stato semplificato a 1).
