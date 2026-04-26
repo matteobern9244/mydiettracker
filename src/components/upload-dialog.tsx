@@ -332,8 +332,8 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
         {step === "duplicate" && duplicate && (
           <div className="space-y-4 py-4">
-            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+              <AlertCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-medium text-foreground">File identico già presente</p>
                 <p className="text-muted-foreground">
