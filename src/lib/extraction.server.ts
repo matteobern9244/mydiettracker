@@ -41,8 +41,9 @@ export async function extractDocumentInput(
 
   if (lower.endsWith(".doc")) {
     // 1) Tentativo estrazione naive del testo dal binario .doc
+    // Soglia bassa: il fallback binario è la causa principale dei timeout.
     const naive = extractTextFromLegacyDoc(buffer);
-    if (naive && naive.length > 200) {
+    if (naive && naive.length > 80) {
       return { kind: "text", text: naive };
     }
     // 2) Fallback: invia il binario direttamente all'AI
