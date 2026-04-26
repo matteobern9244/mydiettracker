@@ -1,133 +1,85 @@
+# Fix: "upstream request timeout" durante l'analisi AI
 
-# Piano: estrazione completa multi-visita + reset totale
+## Causa del problema
 
-Due richieste indipendenti ma legate al ciclo di vita dei dati.
+`uploadAndExtract` esegue **in un'unica request HTTP**: upload storage → creazione record → estrazione testo → chiamata AI Gemini → update DB. Quando il file è un `.doc` legacy, il fallback invia il **binario intero in base64** a Gemini con un prompt complesso multi-visita: la chiamata supera facilmente i 30–40s e il proxy upstream (Cloudflare/Lovable) chiude la connessione con `upstream request timeout` **prima** che il server function risponda. Il file viene anche caricato più volte ad ogni retry.
 
----
-
-## 1. Estrazione di TUTTE le visite dal documento
-
-### Problema attuale
-Lo schema AI in `src/lib/extraction.server.ts` dichiara `visit` come **oggetto singolo** (una sola data, un solo peso). Quando il referto contiene più colonne (es. visite del 13.6.25, 31.1.25, ecc.), l'AI ne estrae una sola e ignora le altre. Anche circonferenze, composizione corporea e DEXA sono singoli oggetti, non array.
-
-### Modifiche allo schema AI (`src/lib/extraction.server.ts`)
-Riscrivere `EXTRACTION_SCHEMA` con la nuova struttura:
-
-```
-{
-  visits: [
-    {
-      visit_date: "YYYY-MM-DD",
-      weight_kg, notes,
-      circumferences: { arm_cm, waist_cm, ... },     // legate alla visita
-      body_composition: { fat_mass_pct, bmi, ... },
-      dexa_segments: [ { segment, fat_mass_pct, lean_mass_kg } ]
-    },
-    ...                                              // una entry per ogni colonna/data presente nel referto
-  ],
-  blood_tests: [ ... ],                              // restano indipendenti (date proprie)
-  profile_updates: { ... }                           // dati anagrafici, una sola volta
-}
-```
-
-Aggiornare anche il **system prompt** per istruire esplicitamente: «I referti dietologici italiani usano una tabella con **una colonna per ogni visita**. Devi creare un elemento di `visits` per OGNI colonna/data che trovi, anche se alcuni valori sono vuoti. Non saltare nessuna colonna.»
-
-### Tipi (`src/lib/types.ts`)
-Sostituire `ExtractedData` con:
-
-```ts
-export interface ExtractedVisit {
-  visit_date: string | null;
-  weight_kg: number | null;
-  notes: string | null;
-  circumferences: Circumferences;
-  body_composition: BodyComposition;
-  dexa_segments: DexaSegment[];
-}
-
-export interface ExtractedData {
-  visits: ExtractedVisit[];
-  blood_tests: Array<...>;
-  profile_updates: ProfileUpdates;
-}
-```
-
-### Salvataggio (`src/lib/dashboard.functions.ts` → `saveConfirmedData`)
-Trasformare la logica attuale (una visita) in un **loop**:
-- Per ogni `extracted.visits[i]`:
-  - Inserire row in `visits` (legare `document_id` solo alla prima, oppure a tutte — preferiamo a tutte, così cancellando il documento si rimuovono tutte).
-  - Inserire `circumferences`, `body_composition`, `dexa_segments` con il `visit_id` appena creato.
-- `blood_tests` restano collegati alla prima visita (o a nessuna; meglio: alla prima per semplicità di cleanup).
-- `profile_updates` invariato.
-- Restituire `{ visitIds: [...] }`.
-
-### Frontend (`src/components/upload-dialog.tsx`)
-Riscrivere `ReviewForm` per gestire un **array di visite**:
-- Selettore/tab in cima: "Visita 1 di N — 13/06/2025", con frecce ◀ ▶ o tabs.
-- Per la visita selezionata mostrare: data, peso, note, circonferenze, composizione, DEXA (le sezioni esistenti).
-- Pulsanti **"+ Aggiungi visita"** e **"Rimuovi questa visita"** in caso l'AI sbagli.
-- La sezione "Esami ematochimici" e "Profilo" restano fuori dalle tab (globali al documento).
-- Validazione: bottone "Conferma e salva" disabilitato se *qualsiasi* visita ha `visit_date` vuota; mostrare badge rosso sulla tab incompleta.
-
-### Toast finale
-"Salvate N visite dal referto" invece di "Visita salvata".
+Va spezzato in **upload veloce + job asincrono + polling**, ed è opportuno ridurre la latenza AI quando possibile.
 
 ---
 
-## 2. Hard reset totale
+## Cosa farò
 
-### Backend — nuova server function (`src/lib/dashboard.functions.ts`)
-```ts
-export const hardResetAllData = createServerFn({ method: "POST" })
-  .inputValidator((input: { confirm: "RESET" }) => {
-    if (input.confirm !== "RESET") throw new Error("Conferma mancante");
-    return input;
-  })
-  .handler(async () => {
-    // 1) Lista tutti gli oggetti nello storage e li rimuove
-    const { data: files } = await supabaseAdmin.storage.from("referti").list("referti");
-    if (files?.length) {
-      await supabaseAdmin.storage.from("referti").remove(files.map(f => `referti/${f.name}`));
-    }
-    // 2) Cancella tutte le righe (ordine: figli → padri)
-    await supabaseAdmin.from("blood_tests").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabaseAdmin.from("dexa_segments").delete().neq("id", "...");
-    await supabaseAdmin.from("body_composition").delete().neq("id", "...");
-    await supabaseAdmin.from("circumferences").delete().neq("id", "...");
-    await supabaseAdmin.from("visits").delete().neq("id", "...");
-    await supabaseAdmin.from("documents").delete().neq("id", "...");
-    // 3) Reset profilo: azzera campi medici ma mantiene la riga (target_weight_kg = null)
-    const { data: prof } = await supabaseAdmin.from("profile").select("id").maybeSingle();
-    if (prof) {
-      await supabaseAdmin.from("profile").update({
-        full_name: null, email: null, phone: null, profession: null,
-        age: null, height_cm: null, target_weight_kg: null,
-        family_doctor: null, allergies: null, intolerances: null,
-        // jsonb tornano vuoti
-        family_history: {}, pathologies: {}, medications: [],
-        food_preferences: {}, food_diary: {}, weight_history: {},
-      }).eq("id", prof.id);
-    }
-    return { ok: true };
-  });
-```
+### 1. Migrazione DB: stato del job di estrazione
 
-### Frontend (`src/components/dashboard.tsx`)
-- Nuovo bottone **"Cancella tutti i dati"** in fondo alla dashboard (sezione "Zona pericolosa"), stile `variant="destructive"`, icona `Trash2`.
-- Al click apre un `AlertDialog` (shadcn/ui, già installato in `src/components/ui/alert-dialog.tsx`):
-  - Titolo: "Hard reset totale"
-  - Descrizione: «Verranno cancellati definitivamente: tutte le visite, tutti gli esami, tutti i file caricati e i dati anagrafici. Operazione **irreversibile**.»
-  - Campo input: «Per confermare, scrivi `RESET` nel campo qui sotto»
-  - Bottone "Cancella tutto" abilitato solo se input === "RESET"
-- Al successo: toast "Tutti i dati sono stati cancellati", invalidate query `["dashboard"]`.
+Migration su `public.documents`:
+- aggiungo colonna `extraction_error text` (per messaggi di errore leggibili)
+- estendo i valori ammessi di `extraction_status` per includere `processing` (oltre a `pending | extracted | failed | confirmed`)
+
+Nessuna modifica a tabelle riservate. Nessun CHECK constraint vincolante (uso solo testo libero).
+
+### 2. Split del server function `uploadAndExtract` in tre endpoint
+
+In `src/lib/dashboard.functions.ts`:
+
+**a) `uploadDocument(formData)`** — risposta immediata
+- valida e carica il file in storage `referti/`
+- inserisce row in `documents` con `extraction_status: 'pending'`
+- ritorna `{ documentId }` in <1s
+
+**b) `processExtraction({ documentId })`** — job di estrazione
+- legge il file dallo storage
+- segna `extraction_status: 'processing'`
+- esegue `extractDocumentInput()` + `extractWithAI()`
+- al successo: aggiorna `extraction_status: 'extracted'`, `extraction_raw`, pulisce `extraction_error`
+- al fallimento: aggiorna `extraction_status: 'failed'`, `extraction_error`
+- **non ritorna l'estratto**: il client lo recupera con polling (così se la request si chiude per timeout, il job continua e il dato è comunque scritto sul DB al termine)
+
+**c) `getExtractionStatus({ documentId })`** — polling rapido
+- ritorna `{ status, extracted, error }`
+
+`saveConfirmedData`, `getDashboardData`, `deleteVisit`, `getDocumentUrl`, `updateTargetWeight`, `hardResetAllData` restano invariati.
+
+### 3. Riduzione latenza dell'estrazione AI
+
+In `src/lib/extraction.server.ts`:
+- **Modello più veloce**: passo da `google/gemini-2.5-flash` a `google/gemini-2.5-flash-lite` per l'estrazione (lo schema strutturato è ben gestito anche dal lite e taglia ~50% del tempo).
+- **Soglia naive .doc più permissiva**: accetto il testo estratto quando è ≥ 80 caratteri (prima 200), così evito il fallback binario che è la causa principale dei timeout.
+- **Aggiungo timeout esplicito** sulla `fetch` verso il gateway (60s) con `AbortController`, con messaggio d'errore chiaro "L'estrazione è andata oltre il limite, riprova".
+- Il fallback binario per `.doc` resta come ultima spiaggia, ma viene attivato raramente.
+
+### 4. Frontend: nuovo flusso con polling
+
+In `src/components/upload-dialog.tsx`:
+- nuovo step `"processing"` con messaggio "Sto leggendo il referto, può richiedere fino a 1–2 minuti…"
+- la mutation chiama in sequenza:
+  1. `uploadDocument(file)` → ottiene `documentId` velocemente
+  2. avvia `processExtraction({ documentId })` **senza attendere il risultato** (fire & forget, con `.catch` silenzioso: anche se il proxy chiude la connessione, il job server-side continua perché la chiamata Supabase è già partita)
+  3. inizia un **polling** ogni 3s su `getExtractionStatus({ documentId })` con timeout massimo di 3 minuti
+  4. quando lo status è `extracted` mostra il review form esistente
+  5. se `failed` mostra `extraction_error` e permette retry o annullo
+- Aggiungo pulsante "Riprova estrazione" nello step di errore (richiama `processExtraction` sullo stesso `documentId` senza ricaricare il file).
+
+### 5. Pulizia in caso di annullamento
+
+Se l'utente annulla durante upload/processing, NON rimuovo automaticamente il file/documento (resta come `pending`/`failed`). L'hard reset esistente già pulisce tutto.
 
 ---
 
 ## File toccati
-1. `src/lib/extraction.server.ts` — schema AI (visits[]) + prompt aggiornato
-2. `src/lib/types.ts` — nuovi tipi `ExtractedVisit` + `ExtractedData`
-3. `src/lib/dashboard.functions.ts` — `saveConfirmedData` con loop + nuova `hardResetAllData`
-4. `src/components/upload-dialog.tsx` — review form multi-visita con tab/navigazione
-5. `src/components/dashboard.tsx` — sezione "Zona pericolosa" + AlertDialog di conferma
+- `supabase/migrations/<new>.sql` (nuova migrazione: colonna `extraction_error`)
+- `src/lib/dashboard.functions.ts` (split in 3 endpoint + nuovo `getExtractionStatus`)
+- `src/lib/extraction.server.ts` (modello lite, soglia naive, timeout fetch)
+- `src/components/upload-dialog.tsx` (step `processing`, polling, retry)
+- `src/integrations/supabase/types.ts` viene rigenerato automaticamente
 
-Nessuna nuova migration DB necessaria (lo schema attuale supporta già N visite, è solo il pipe di estrazione/UI a essere stato semplificato a 1).
+## File NON toccati
+- `src/components/dashboard.tsx`, `hard-reset-dialog.tsx`, `insight-card.tsx`, `status-badge.tsx`
+- `src/lib/insights.ts`, `src/lib/types.ts`
+- `src/integrations/supabase/client.ts`, `client.server.ts`
+
+## Risultato atteso
+- L'upload risponde subito (nessun timeout sulla prima request).
+- L'estrazione gira in background; anche se la chiamata HTTP `processExtraction` viene chiusa dal proxy, il lavoro continua e il risultato finisce nel DB.
+- Il client mostra avanzamento reale tramite polling, quindi niente più toast "upstream request timeout".
+- Documenti `.docx` testuali (la maggior parte dei referti) vengono processati in 5–15s con `flash-lite`, ben sotto qualsiasi limite.
