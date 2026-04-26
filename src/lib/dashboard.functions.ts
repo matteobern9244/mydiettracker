@@ -321,17 +321,14 @@ export const hardResetAllData = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    // 1) Lista i file dell'utente nel bucket referti e li rimuove.
-    //    Usiamo supabaseAdmin per leggere la colonna owner della tabella storage.objects
-    //    (supportata via SQL ma non da .list() del client utente).
-    const { data: ownedFiles } = await supabaseAdmin
-      .from("objects" as never)
-      .select("name")
-      .eq("bucket_id", "referti")
-      .eq("owner", userId)
-      .schema("storage" as never) as unknown as { data: { name: string }[] | null };
+    // 1) Rimuovi tutti i file dell'utente nel bucket "referti".
+    //    I file sono archiviati con path `referti/<userId>/...` quindi possiamo
+    //    listare la cartella e cancellarli col client autenticato.
+    const userFolder = `referti/${userId}`;
+    const { data: ownedFiles } = await supabase.storage.from("referti").list(userFolder, { limit: 1000 });
     if (ownedFiles && ownedFiles.length) {
-      await supabase.storage.from("referti").remove(ownedFiles.map((f) => f.name));
+      const paths = ownedFiles.map((f) => `${userFolder}/${f.name}`);
+      await supabase.storage.from("referti").remove(paths);
     }
 
     // 2) Cancella le righe (le FK ON DELETE CASCADE su user_id farebbero la stessa cosa,
