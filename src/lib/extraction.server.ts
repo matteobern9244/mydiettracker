@@ -5,9 +5,21 @@ import mammoth from "mammoth";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const MODEL = "google/gemini-2.5-flash";
 
-export async function extractTextFromDoc(buffer: ArrayBuffer): Promise<string> {
-  const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
-  return result.value;
+export async function extractTextFromDoc(buffer: ArrayBuffer, fileName: string): Promise<string> {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".docx")) {
+    const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+    return result.value;
+  }
+  if (lower.endsWith(".doc")) {
+    throw new Error(
+      "I file .doc (formato Word legacy) non sono supportati. Apri il file in Word/Pages/Google Docs e salvalo come .docx, poi ricarica."
+    );
+  }
+  if (lower.endsWith(".txt")) {
+    return new TextDecoder().decode(buffer);
+  }
+  throw new Error(`Formato file non supportato: ${fileName}. Usa .docx o .txt.`);
 }
 
 const EXTRACTION_SCHEMA = {
