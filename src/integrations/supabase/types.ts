@@ -210,6 +210,7 @@ export type Database = {
       }
       documents: {
         Row: {
+          extraction_error: string | null
           extraction_raw: Json | null
           extraction_status: string
           id: string
@@ -220,6 +221,7 @@ export type Database = {
           uploaded_at: string
         }
         Insert: {
+          extraction_error?: string | null
           extraction_raw?: Json | null
           extraction_status?: string
           id?: string
@@ -230,6 +232,7 @@ export type Database = {
           uploaded_at?: string
         }
         Update: {
+          extraction_error?: string | null
           extraction_raw?: Json | null
           extraction_status?: string
           id?: string

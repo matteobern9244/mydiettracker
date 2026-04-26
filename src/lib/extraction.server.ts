@@ -3,7 +3,9 @@
 import mammoth from "mammoth";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
+// flash-lite è ~2x più veloce di flash sull'estrazione strutturata: riduce drasticamente i timeout
+const MODEL = "google/gemini-2.5-flash-lite";
+const AI_TIMEOUT_MS = 90_000;
 
 export type ExtractionInput =
   | { kind: "text"; text: string }
@@ -39,8 +41,9 @@ export async function extractDocumentInput(
 
   if (lower.endsWith(".doc")) {
     // 1) Tentativo estrazione naive del testo dal binario .doc
+    // Soglia bassa: il fallback binario è la causa principale dei timeout.
     const naive = extractTextFromLegacyDoc(buffer);
-    if (naive && naive.length > 200) {
+    if (naive && naive.length > 80) {
       return { kind: "text", text: naive };
     }
     // 2) Fallback: invia il binario direttamente all'AI
@@ -247,22 +250,36 @@ ESAMINA L'INTERO DOCUMENTO. Non fermarti alla prima visita o alla prima pagina. 
           },
         ] as unknown);
 
-  const response = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-      tools: [{ type: "function", function: EXTRACTION_SCHEMA }],
-      tool_choice: { type: "function", function: { name: "extract_dietologia" } },
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(GATEWAY_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        tools: [{ type: "function", function: EXTRACTION_SCHEMA }],
+        tool_choice: { type: "function", function: { name: "extract_dietologia" } },
+      }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") {
+      throw new Error("L'estrazione AI è andata oltre il limite di tempo. Riprova oppure converti il file in .docx più leggero.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const txt = await response.text();

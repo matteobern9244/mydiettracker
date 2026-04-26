@@ -3,8 +3,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { extractDocumentInput, extractWithAI } from "@/lib/extraction.server";
 import type { ExtractedData } from "@/lib/types";
 
-// 1) Upload del file → estrazione AI → ritorna {documentId, extracted}
-export const uploadAndExtract = createServerFn({ method: "POST" })
+// 1a) Upload veloce: carica il file in storage + crea record. Risponde in <1s.
+export const uploadDocument = createServerFn({ method: "POST" })
   .inputValidator((input) => {
     if (!(input instanceof FormData)) throw new Error("Expected FormData");
     const file = input.get("file");
@@ -17,10 +17,10 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
     const { file } = data;
     const buffer = await file.arrayBuffer();
 
-    // 1) Carica il file in storage
     const ts = Date.now();
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `referti/${ts}_${safeName}`;
+
     const uploadRes = await supabaseAdmin.storage
       .from("referti")
       .upload(path, buffer, {
@@ -29,7 +29,6 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
       });
     if (uploadRes.error) throw new Error(`Storage error: ${uploadRes.error.message}`);
 
-    // 2) Crea record document
     const { data: docRow, error: docErr } = await supabaseAdmin
       .from("documents")
       .insert({
@@ -38,44 +37,100 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
         size_bytes: file.size,
         mime_type: file.type || null,
         extraction_status: "pending",
-      })
+        extraction_error: null,
+      } as never)
       .select("id")
       .single();
     if (docErr || !docRow) throw new Error(`DB error: ${docErr?.message ?? "no doc"}`);
 
-    // 3) Prepara input per l'AI (testo se possibile, altrimenti binario inline)
-    let aiInput;
-    try {
-      aiInput = await extractDocumentInput(buffer, file.name, file.type || "");
-    } catch (e) {
-      await supabaseAdmin
-        .from("documents")
-        .update({ extraction_status: "failed" })
-        .eq("id", docRow.id);
-      throw new Error(`Impossibile leggere il file: ${(e as Error).message}`);
+    return { documentId: docRow.id };
+  });
+
+// 1b) Job di estrazione: legge il file dallo storage e chiama l'AI.
+// Anche se la connessione HTTP del client viene chiusa dal proxy, il job continua
+// finché il server function non termina. Il risultato viene SEMPRE scritto nel DB.
+// Il client legge l'esito tramite getExtractionStatus.
+export const processExtraction = createServerFn({ method: "POST" })
+  .inputValidator((input: { documentId: string }) => input)
+  .handler(async ({ data }) => {
+    const { documentId } = data;
+
+    // Carica il record
+    const { data: doc, error: docErr } = await supabaseAdmin
+      .from("documents")
+      .select("storage_path, original_name, mime_type, extraction_status")
+      .eq("id", documentId)
+      .single();
+    if (docErr || !doc) throw new Error("Documento non trovato");
+
+    // Idempotenza: se già completato, non rifare
+    if (doc.extraction_status === "extracted" || doc.extraction_status === "confirmed") {
+      return { ok: true, alreadyDone: true };
     }
 
-    // 4) Chiama AI
-    let extracted: unknown;
-    try {
-      extracted = await extractWithAI(aiInput);
-    } catch (e) {
-      await supabaseAdmin
-        .from("documents")
-        .update({ extraction_status: "failed" })
-        .eq("id", docRow.id);
-      throw e;
-    }
-
+    // Marca come "processing"
     await supabaseAdmin
       .from("documents")
-      .update({
-        extraction_status: "extracted",
-        extraction_raw: extracted as never,
-      })
-      .eq("id", docRow.id);
+      .update({ extraction_status: "processing", extraction_error: null } as never)
+      .eq("id", documentId);
 
-    return { documentId: docRow.id, extracted: extracted as ExtractedData };
+    // Scarica il file dallo storage
+    const { data: blob, error: dlErr } = await supabaseAdmin.storage
+      .from("referti")
+      .download(doc.storage_path);
+    if (dlErr || !blob) {
+      await supabaseAdmin
+        .from("documents")
+        .update({
+          extraction_status: "failed",
+          extraction_error: `Download fallito: ${dlErr?.message ?? "file mancante"}`,
+        } as never)
+        .eq("id", documentId);
+      throw new Error("Impossibile scaricare il file dallo storage");
+    }
+    const buffer = await blob.arrayBuffer();
+
+    // Estrai input + chiama AI
+    try {
+      const aiInput = await extractDocumentInput(buffer, doc.original_name, doc.mime_type || "");
+      const extracted = await extractWithAI(aiInput);
+      await supabaseAdmin
+        .from("documents")
+        .update({
+          extraction_status: "extracted",
+          extraction_raw: extracted as never,
+          extraction_error: null,
+        } as never)
+        .eq("id", documentId);
+      return { ok: true };
+    } catch (e) {
+      const msg = (e as Error).message ?? "Errore sconosciuto";
+      await supabaseAdmin
+        .from("documents")
+        .update({
+          extraction_status: "failed",
+          extraction_error: msg,
+        } as never)
+        .eq("id", documentId);
+      throw e;
+    }
+  });
+
+// 1c) Polling: ritorna lo stato + l'estratto se pronto
+export const getExtractionStatus = createServerFn({ method: "POST" })
+  .inputValidator((input: { documentId: string }) => input)
+  .handler(async ({ data }) => {
+    const { data: doc, error } = await supabaseAdmin
+      .from("documents")
+      .select("extraction_status, extraction_raw, extraction_error")
+      .eq("id", data.documentId)
+      .single();
+    if (error || !doc) throw new Error("Documento non trovato");
+    return {
+      status: doc.extraction_status as "pending" | "processing" | "extracted" | "confirmed" | "failed",
+      extracted: (doc.extraction_raw as ExtractedData | null) ?? null,
+      error: (doc as { extraction_error?: string | null }).extraction_error ?? null,
+    };
   });
 
 // 2) Conferma e salva i dati definitivi (può aver subito edit dal frontend)
