@@ -247,3 +247,58 @@ export const getDocumentUrl = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { url: signed.signedUrl, name: doc.original_name };
   });
+
+// 7) Hard reset: cancella TUTTI i dati (visite, esami, file, profilo)
+const FAKE_UUID = "00000000-0000-0000-0000-000000000000";
+
+export const hardResetAllData = createServerFn({ method: "POST" })
+  .inputValidator((input: { confirm: string }) => {
+    if (input.confirm !== "RESET") throw new Error("Conferma mancante: scrivi RESET");
+    return input;
+  })
+  .handler(async () => {
+    // 1) Svuota lo storage bucket "referti"
+    const { data: files } = await supabaseAdmin.storage.from("referti").list("referti", { limit: 1000 });
+    if (files && files.length) {
+      const paths = files.map((f) => `referti/${f.name}`);
+      await supabaseAdmin.storage.from("referti").remove(paths);
+    }
+
+    // 2) Cancella le tabelle (figli prima, poi padri)
+    await supabaseAdmin.from("blood_tests").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("dexa_segments").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("body_composition").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("circumferences").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("visits").delete().neq("id", FAKE_UUID);
+    await supabaseAdmin.from("documents").delete().neq("id", FAKE_UUID);
+
+    // 3) Reset profilo (mantiene la riga ma azzera i campi)
+    const { data: prof } = await supabaseAdmin.from("profile").select("id").maybeSingle();
+    if (prof) {
+      await supabaseAdmin
+        .from("profile")
+        .update({
+          full_name: null,
+          email: null,
+          phone: null,
+          profession: null,
+          age: null,
+          birth_date: null,
+          height_cm: null,
+          target_weight_kg: null,
+          family_doctor: null,
+          goal: null,
+          allergies: null,
+          intolerances: null,
+          family_history: {},
+          pathologies: {},
+          medications: [],
+          food_preferences: {},
+          food_diary: {},
+          weight_history: {},
+        } as never)
+        .eq("id", prof.id);
+    }
+
+    return { ok: true };
+  });
