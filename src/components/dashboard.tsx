@@ -40,7 +40,7 @@ import {
   buildBodyCompInsight,
   buildCircInsight,
 } from "@/lib/insights";
-import type { VisitFull, BloodTest } from "@/lib/types";
+import type { VisitFull, BloodTest, DocumentRow, ExtractionStatus } from "@/lib/types";
 
 export function Dashboard() {
   const [uploadOpen, setUploadOpen] = useState(false);
