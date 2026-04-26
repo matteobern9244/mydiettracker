@@ -435,6 +435,33 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
     return () => clearInterval(t);
   }, [hasActive, qc]);
 
+  // Notifica in tempo reale quando un documento esce da processing/pending
+  const prevStatusRef = useRef<Map<string, ExtractionStatus>>(new Map());
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    for (const d of documents) {
+      const before = prev.get(d.id);
+      const isActiveBefore = before === "processing" || before === "pending";
+      if (before && before !== d.extraction_status && isActiveBefore) {
+        if (d.extraction_status === "extracted") {
+          toast.success(`Estrazione completata: ${d.original_name}`, {
+            description: "Apri il referto dalla lista per rivedere e confermare i dati.",
+          });
+        } else if (d.extraction_status === "confirmed") {
+          toast.success(`Dati salvati: ${d.original_name}`);
+        } else if (d.extraction_status === "failed") {
+          toast.error(`Estrazione fallita: ${d.original_name}`, {
+            description: d.extraction_error ?? "Riprova dalla lista documenti.",
+          });
+        }
+      }
+    }
+    // Aggiorna lo snapshot
+    const next = new Map<string, ExtractionStatus>();
+    for (const d of documents) next.set(d.id, d.extraction_status);
+    prevStatusRef.current = next;
+  }, [documents]);
+
   if (documents.length === 0) return null;
 
   const handleDownload = async (id: string) => {
