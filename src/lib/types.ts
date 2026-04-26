@@ -11,14 +11,14 @@ export interface Profile {
   target_weight_kg: number | null;
   family_doctor: string | null;
   goal: string | null;
-  family_history: Record<string, unknown>;
-  pathologies: Record<string, unknown>;
-  medications: unknown[];
+  family_history: Record<string, unknown> | null;
+  pathologies: Record<string, unknown> | null;
+  medications: unknown[] | null;
   allergies: string | null;
   intolerances: string | null;
-  food_preferences: Record<string, unknown>;
-  food_diary: Record<string, unknown>;
-  weight_history: Record<string, unknown>;
+  food_preferences: Record<string, unknown> | null;
+  food_diary: Record<string, unknown> | null;
+  weight_history: Record<string, unknown> | null;
 }
 
 export interface Circumferences {
