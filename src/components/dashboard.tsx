@@ -510,6 +510,7 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   );
 }
 
+function DangerZone() {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
   const resetFn = useServerFn(hardResetAllData);
