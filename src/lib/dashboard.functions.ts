@@ -83,60 +83,65 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
   .inputValidator((input: { documentId: string; data: ExtractedData }) => input)
   .handler(async ({ data }) => {
     const { documentId, data: extracted } = data;
-    const v = extracted.visit;
-    if (!v.visit_date) throw new Error("Manca la data della visita");
-
-    // Crea visita
-    const { data: visit, error: visitErr } = await supabaseAdmin
-      .from("visits")
-      .insert({
-        visit_date: v.visit_date,
-        weight_kg: v.weight_kg,
-        notes: v.notes,
-        document_id: documentId,
-      })
-      .select("id")
-      .single();
-    if (visitErr || !visit) throw new Error(`Errore creazione visita: ${visitErr?.message}`);
-
-    const visitId = visit.id;
-
-    // Circonferenze
-    const c = extracted.circumferences;
-    const hasCirc = Object.values(c).some((x) => x != null);
-    if (hasCirc) {
-      const { error } = await supabaseAdmin
-        .from("circumferences")
-        .insert({ visit_id: visitId, ...c });
-      if (error) throw new Error(`Errore circonferenze: ${error.message}`);
+    const visitsList = extracted.visits ?? [];
+    if (visitsList.length === 0) throw new Error("Nessuna visita da salvare");
+    if (visitsList.some((v) => !v.visit_date)) {
+      throw new Error("Tutte le visite devono avere una data");
     }
 
-    // Composizione
-    const bc = extracted.body_composition;
-    const hasBc = Object.values(bc).some((x) => x != null);
-    if (hasBc) {
-      const { error } = await supabaseAdmin
-        .from("body_composition")
-        .insert({ visit_id: visitId, ...bc });
-      if (error) throw new Error(`Errore composizione: ${error.message}`);
-    }
+    const visitIds: string[] = [];
 
-    // DEXA segments
-    if (extracted.dexa_segments?.length) {
-      const rows = extracted.dexa_segments
-        .filter((s) => s.fat_mass_pct != null || s.lean_mass_kg != null)
-        .map((s) => ({ visit_id: visitId, ...s }));
-      if (rows.length) {
-        const { error } = await supabaseAdmin.from("dexa_segments").insert(rows);
-        if (error) throw new Error(`Errore DEXA: ${error.message}`);
+    for (const v of visitsList) {
+      // Crea visita
+      const { data: visitRow, error: visitErr } = await supabaseAdmin
+        .from("visits")
+        .insert({
+          visit_date: v.visit_date as string,
+          weight_kg: v.weight_kg,
+          notes: v.notes,
+          document_id: documentId,
+        })
+        .select("id")
+        .single();
+      if (visitErr || !visitRow) throw new Error(`Errore creazione visita: ${visitErr?.message}`);
+      const visitId = visitRow.id;
+      visitIds.push(visitId);
+
+      // Circonferenze
+      const c = v.circumferences;
+      if (c && Object.values(c).some((x) => x != null)) {
+        const { error } = await supabaseAdmin
+          .from("circumferences")
+          .insert({ visit_id: visitId, ...c });
+        if (error) throw new Error(`Errore circonferenze: ${error.message}`);
+      }
+
+      // Composizione
+      const bc = v.body_composition;
+      if (bc && Object.values(bc).some((x) => x != null)) {
+        const { error } = await supabaseAdmin
+          .from("body_composition")
+          .insert({ visit_id: visitId, ...bc });
+        if (error) throw new Error(`Errore composizione: ${error.message}`);
+      }
+
+      // DEXA segments
+      if (v.dexa_segments?.length) {
+        const rows = v.dexa_segments
+          .filter((s) => s.fat_mass_pct != null || s.lean_mass_kg != null)
+          .map((s) => ({ visit_id: visitId, ...s }));
+        if (rows.length) {
+          const { error } = await supabaseAdmin.from("dexa_segments").insert(rows);
+          if (error) throw new Error(`Errore DEXA: ${error.message}`);
+        }
       }
     }
 
-    // Esami ematochimici (possono essere più di uno con date diverse)
-    if (extracted.blood_tests?.length) {
+    // Esami ematochimici (collegati alla prima visita per cleanup)
+    if (extracted.blood_tests?.length && visitIds.length) {
       const rows = extracted.blood_tests
         .filter((t) => t.test_date)
-        .map((t) => ({ ...t, visit_id: visitId }));
+        .map((t) => ({ ...t, visit_id: visitIds[0] }));
       if (rows.length) {
         const { error } = await supabaseAdmin.from("blood_tests").insert(rows);
         if (error) throw new Error(`Errore esami: ${error.message}`);
@@ -161,7 +166,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
       .update({ extraction_status: "confirmed" })
       .eq("id", documentId);
 
-    return { visitId };
+    return { visitIds, count: visitIds.length };
   });
 
 // 3) Carica tutti i dati per la dashboard
