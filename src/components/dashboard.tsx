@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
-import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw } from "lucide-react";
+import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import {
   processExtraction,
   getExtractionStatus,
 } from "@/lib/dashboard.functions";
+import { withAuth } from "@/lib/server-call";
+import { useAuth } from "@/hooks/use-auth";
 import { HardResetDialog } from "@/components/hard-reset-dialog";
 import {
   formatNumber,
@@ -45,10 +47,11 @@ import type { VisitFull, BloodTest, DocumentRow, ExtractionStatus } from "@/lib/
 export function Dashboard() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const qc = useQueryClient();
-  const getData = useServerFn(getDashboardData);
-  const updTarget = useServerFn(updateTargetWeight);
-  const delVisit = useServerFn(deleteVisit);
-  const getDocUrl = useServerFn(getDocumentUrl);
+  const { user, signOut } = useAuth();
+  const getData = withAuth(useServerFn(getDashboardData));
+  const updTarget = withAuth(useServerFn(updateTargetWeight));
+  const delVisit = withAuth(useServerFn(deleteVisit));
+  const getDocUrl = withAuth(useServerFn(getDocumentUrl));
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
@@ -145,9 +148,11 @@ export function Dashboard() {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
               <Activity className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-base font-semibold leading-none">Il mio percorso</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">{profile?.full_name ?? "Profilo"}</p>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold leading-none truncate">Il mio percorso</h1>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px] sm:max-w-none">
+                {profile?.full_name ?? user?.email ?? "Profilo"}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -157,6 +162,18 @@ export function Dashboard() {
               <span className="sm:hidden">Carica</span>
             </Button>
             <ThemeToggle />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={async () => {
+                await signOut();
+                toast.success("Sei uscito.");
+              }}
+              title="Esci"
+              aria-label="Esci"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </header>
@@ -475,9 +492,9 @@ function writeCooldowns(map: Record<string, number>) {
 
 function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const qc = useQueryClient();
-  const getDocUrl = useServerFn(getDocumentUrl);
-  const processFn = useServerFn(processExtraction);
-  const statusFn = useServerFn(getExtractionStatus);
+  const getDocUrl = withAuth(useServerFn(getDocumentUrl));
+  const processFn = withAuth(useServerFn(processExtraction));
+  const statusFn = withAuth(useServerFn(getExtractionStatus));
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [cooldowns, setCooldowns] = useState<Record<string, number>>(() => readCooldowns());
@@ -711,7 +728,7 @@ function scrollToKpi() {
 function DangerZone() {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
-  const resetFn = useServerFn(hardResetAllData);
+  const resetFn = withAuth(useServerFn(hardResetAllData));
   const resetMut = useMutation({
     mutationFn: () => resetFn({ data: { confirm: "RESET" } }),
     onSuccess: () => {
