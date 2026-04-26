@@ -80,7 +80,7 @@ export function Dashboard() {
   const search = dashRoute.useSearch();
   const navigate = useNavigate({ from: "/" });
   const setSearch = (patch: Record<string, unknown>) =>
-    navigate({ search: (prev) => ({ ...prev, ...patch }) as never, replace: true });
+    navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, ...patch }) as never, replace: true });
 
   // Helper per aggiornare un filtro di sezione (preset/from/to)
   const buildPresetSetter = (sec: "weight" | "comp" | "circ" | "blood") =>
