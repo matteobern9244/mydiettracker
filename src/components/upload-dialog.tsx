@@ -351,6 +351,8 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         )}
 
         {step === "processing" && (
+          <div className="flex flex-col items-center gap-4 py-12">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <div className="text-center space-y-1">
               <p className="font-medium">Sto analizzando il referto…</p>
               <p className="text-sm text-muted-foreground tabular-nums">
