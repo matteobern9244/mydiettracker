@@ -3,7 +3,9 @@
 import mammoth from "mammoth";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
+// flash-lite è ~2x più veloce di flash sull'estrazione strutturata: riduce drasticamente i timeout
+const MODEL = "google/gemini-2.5-flash-lite";
+const AI_TIMEOUT_MS = 90_000;
 
 export type ExtractionInput =
   | { kind: "text"; text: string }
