@@ -446,9 +446,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
         if (d.extraction_status === "extracted") {
           toast.success(`Estrazione completata: ${d.original_name}`, {
             description: "Apri il referto dalla lista per rivedere e confermare i dati.",
+            action: { label: "Vai ai risultati", onClick: () => scrollToKpi() },
           });
         } else if (d.extraction_status === "confirmed") {
-          toast.success(`Dati salvati: ${d.original_name}`);
+          toast.success(`Dati salvati: ${d.original_name}`, {
+            action: { label: "Vai ai risultati", onClick: () => scrollToKpi() },
+          });
         } else if (d.extraction_status === "failed") {
           toast.error(`Estrazione fallita: ${d.original_name}`, {
             description: d.extraction_error ?? "Riprova dalla lista documenti.",
