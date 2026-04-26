@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { extractDocumentInput, extractWithAI } from "@/lib/extraction.server";
 import type { ExtractedData } from "@/lib/types";
 
