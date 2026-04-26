@@ -43,10 +43,10 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
       .single();
     if (docErr || !docRow) throw new Error(`DB error: ${docErr?.message ?? "no doc"}`);
 
-    // 3) Estrai testo
-    let text = "";
+    // 3) Prepara input per l'AI (testo se possibile, altrimenti binario inline)
+    let aiInput;
     try {
-      text = await extractTextFromDoc(buffer, file.name);
+      aiInput = await extractDocumentInput(buffer, file.name, file.type || "");
     } catch (e) {
       await supabaseAdmin
         .from("documents")
@@ -55,18 +55,10 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
       throw new Error(`Impossibile leggere il file: ${(e as Error).message}`);
     }
 
-    if (!text.trim()) {
-      await supabaseAdmin
-        .from("documents")
-        .update({ extraction_status: "failed" })
-        .eq("id", docRow.id);
-      throw new Error("Il documento sembra vuoto");
-    }
-
     // 4) Chiama AI
     let extracted: unknown;
     try {
-      extracted = await extractWithAI(text);
+      extracted = await extractWithAI(aiInput);
     } catch (e) {
       await supabaseAdmin
         .from("documents")
