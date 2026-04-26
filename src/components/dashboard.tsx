@@ -19,7 +19,9 @@ import {
   updateTargetWeight,
   deleteVisit,
   getDocumentUrl,
+  hardResetAllData,
 } from "@/lib/dashboard.functions";
+import { HardResetDialog } from "@/components/hard-reset-dialog";
 import {
   formatNumber,
   formatDate,
