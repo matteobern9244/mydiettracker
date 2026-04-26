@@ -175,14 +175,36 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       setStep("processing");
     },
     onSuccess: (res) => {
-      setDocumentId(res.documentId);
+      if (res.duplicate) {
+        // File identico già caricato dall'utente: chiediamo cosa fare prima di
+        // spendere risorse AI per estrarre di nuovo.
+        setDuplicate(res.existing);
+        setStep("duplicate");
+        return;
+      }
       // Fire-and-forget: avviamo il job ma non aspettiamo la risposta HTTP.
-      // Anche se il proxy chiude la connessione, il job continua server-side
-      // e il risultato viene scritto nel DB. Il polling lo recupera.
-      processFn({ data: { documentId: res.documentId } }).catch(() => {
-        // ignora: lo stato reale lo legge il polling dal DB
-      });
-      startPolling(res.documentId);
+      startExtractionFor(res.documentId);
+    },
+    onError: (e: Error) => {
+      setErrorMsg(e.message);
+      setStep("error");
+    },
+  });
+
+  const replaceMut = useMutation({
+    mutationFn: async ({ f, existingDocumentId }: { f: File; existingDocumentId: string }) => {
+      const fd = new FormData();
+      fd.append("file", f);
+      fd.append("existingDocumentId", existingDocumentId);
+      return replaceFn({ data: fd });
+    },
+    onMutate: () => {
+      setErrorMsg(null);
+      setStep("processing");
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      startExtractionFor(res.documentId);
     },
     onError: (e: Error) => {
       setErrorMsg(e.message);
