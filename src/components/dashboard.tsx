@@ -572,6 +572,12 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                     Riprova
                   </Button>
                 )}
+                {(d.extraction_status === "extracted" || d.extraction_status === "confirmed") && (
+                  <Button size="sm" onClick={() => scrollToKpi()}>
+                    <Activity className="mr-1.5 h-3.5 w-3.5" />
+                    Vai ai risultati
+                  </Button>
+                )}
               </div>
             </div>
           );
