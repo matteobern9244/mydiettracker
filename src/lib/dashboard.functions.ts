@@ -1,10 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { extractDocumentInput, extractWithAI } from "@/lib/extraction.server";
 import type { ExtractedData } from "@/lib/types";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers di sicurezza
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Restituisce un Error con messaggio "safe" per il client e logga il dettaglio
+// completo solo lato server. Evita di esporre nomi di tabelle/constraint/path
+// di storage al browser tramite la serializzazione di TanStack Start.
+function safeError(userMessage: string, internal?: unknown): Error {
+  if (internal !== undefined) {
+    // Solo log server-side
+    console.error(`[dashboard] ${userMessage}`, internal);
+  }
+  return new Error(userMessage);
+}
+
 // Calcola SHA-256 esadecimale del contenuto del file usando Web Crypto.
-// Disponibile sia in Node 18+ sia nel runtime Worker.
 async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", buffer);
   const bytes = new Uint8Array(digest);
@@ -15,9 +30,82 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   return hex;
 }
 
-// Esegue upload + insert del record documento. Estratto in helper così che
-// `uploadDocument` (con check duplicati) e `replaceDocument` (che cancella
-// prima il vecchio) possano riutilizzare lo stesso flusso.
+// ─────────────────────────────────────────────────────────────────────────────
+// Schemi di validazione condivisi
+// ─────────────────────────────────────────────────────────────────────────────
+
+const uuidSchema = z.string().uuid();
+
+const circumferencesSchema = z.object({
+  arm_cm: z.number().min(0).max(300).nullable(),
+  waist_cm: z.number().min(0).max(300).nullable(),
+  abdomen_cm: z.number().min(0).max(300).nullable(),
+  thigh_cm: z.number().min(0).max(300).nullable(),
+  hips_cm: z.number().min(0).max(300).nullable(),
+  chest_cm: z.number().min(0).max(300).nullable(),
+  neck_cm: z.number().min(0).max(300).nullable(),
+  forearm_cm: z.number().min(0).max(300).nullable(),
+  wrist_cm: z.number().min(0).max(300).nullable(),
+});
+
+const bodyCompositionSchema = z.object({
+  fat_mass_pct: z.number().min(0).max(100).nullable(),
+  lean_mass_kg: z.number().min(0).max(500).nullable(),
+  bone_mass_kg: z.number().min(0).max(50).nullable(),
+  bmi: z.number().min(0).max(150).nullable(),
+  metabolic_age: z.number().int().min(0).max(150).nullable(),
+  hydration_pct: z.number().min(0).max(100).nullable(),
+  visceral_fat: z.number().min(0).max(100).nullable(),
+});
+
+const dexaSegmentSchema = z.object({
+  segment: z.enum(["right_arm", "left_arm", "right_leg", "left_leg", "trunk"]),
+  fat_mass_pct: z.number().min(0).max(100).nullable(),
+  lean_mass_kg: z.number().min(0).max(500).nullable(),
+});
+
+const extractedVisitSchema = z.object({
+  visit_date: z.string().max(20).nullable(),
+  weight_kg: z.number().min(0).max(500).nullable(),
+  notes: z.string().max(5000).nullable(),
+  circumferences: circumferencesSchema,
+  body_composition: bodyCompositionSchema,
+  dexa_segments: z.array(dexaSegmentSchema).max(20),
+});
+
+const bloodTestSchema = z.object({
+  test_date: z.string().max(20),
+  hemoglobin: z.number().min(0).max(100).nullable().optional(),
+  glucose: z.number().min(0).max(2000).nullable().optional(),
+  gamma_gt: z.number().min(0).max(10000).nullable().optional(),
+  alt: z.number().min(0).max(10000).nullable().optional(),
+  ast: z.number().min(0).max(10000).nullable().optional(),
+  total_cholesterol: z.number().min(0).max(2000).nullable().optional(),
+  hdl: z.number().min(0).max(2000).nullable().optional(),
+  ldl: z.number().min(0).max(2000).nullable().optional(),
+  triglycerides: z.number().min(0).max(5000).nullable().optional(),
+  notes: z.string().max(5000).nullable().optional(),
+});
+
+const profileUpdatesSchema = z.object({
+  full_name: z.string().max(200).nullable().optional(),
+  email: z.string().email().max(255).nullable().optional(),
+  phone: z.string().max(50).nullable().optional(),
+  profession: z.string().max(200).nullable().optional(),
+  age: z.number().int().min(0).max(150).nullable().optional(),
+  height_cm: z.number().min(0).max(300).nullable().optional(),
+  family_doctor: z.string().max(200).nullable().optional(),
+  allergies: z.string().max(2000).nullable().optional(),
+  intolerances: z.string().max(2000).nullable().optional(),
+});
+
+const extractedDataSchema = z.object({
+  visits: z.array(extractedVisitSchema).min(1).max(50),
+  blood_tests: z.array(bloodTestSchema).max(100),
+  profile_updates: profileUpdatesSchema,
+});
+
+// Esegue upload + insert del record documento.
 async function uploadAndInsertDocument(
   supabase: import("@supabase/supabase-js").SupabaseClient,
   userId: string,
@@ -35,7 +123,9 @@ async function uploadAndInsertDocument(
       contentType: file.type || "application/octet-stream",
       upsert: false,
     });
-  if (uploadRes.error) throw new Error(`Storage error: ${uploadRes.error.message}`);
+  if (uploadRes.error) {
+    throw safeError("Impossibile salvare il file. Riprova.", uploadRes.error.message);
+  }
 
   const { data: docRow, error: docErr } = await supabase
     .from("documents")
@@ -54,13 +144,12 @@ async function uploadAndInsertDocument(
   if (docErr || !docRow) {
     // Rollback: rimuovi il file appena caricato per non lasciare orfani
     await supabase.storage.from("referti").remove([path]).catch(() => undefined);
-    throw new Error(`DB error: ${docErr?.message ?? "no doc"}`);
+    throw safeError("Impossibile registrare il documento. Riprova.", docErr?.message ?? "no doc");
   }
   return { documentId: docRow.id };
 }
 
-// Cancella un documento esistente: rimuove file in storage, eventuali visite
-// collegate (con cascade su circ/bc/dexa via FK), poi la riga `documents`.
+// Cancella un documento esistente.
 async function deleteDocumentAndRelated(
   supabase: import("@supabase/supabase-js").SupabaseClient,
   documentId: string,
@@ -70,8 +159,6 @@ async function deleteDocumentAndRelated(
     .select("storage_path")
     .eq("id", documentId)
     .single();
-  // Cancella visite collegate (le tabelle figlie hanno FK ON DELETE CASCADE
-  // su visit_id; circ/bc/dexa scompaiono insieme alla visita).
   await supabase.from("visits").delete().eq("document_id", documentId);
   if (doc?.storage_path) {
     await supabase.storage.from("referti").remove([doc.storage_path]).catch(() => undefined);
@@ -79,24 +166,22 @@ async function deleteDocumentAndRelated(
   await supabase.from("documents").delete().eq("id", documentId);
 }
 
-// 1a) Upload veloce: calcola hash, controlla duplicati per utente,
-//     poi carica il file in storage + crea record documento.
+// 1a) Upload veloce
 export const uploadDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => {
-    if (!(input instanceof FormData)) throw new Error("Expected FormData");
+    if (!(input instanceof FormData)) throw new Error("Richiesta non valida");
     const file = input.get("file");
     if (!(file instanceof File)) throw new Error("Nessun file caricato");
     if (file.size === 0) throw new Error("File vuoto");
     if (file.size > 20 * 1024 * 1024) throw new Error("File troppo grande (max 20MB)");
+    if (file.name.length > 255) throw new Error("Nome file troppo lungo");
     return { file };
   })
   .handler(async ({ data, context }) => {
     const { file } = data;
     const { supabase, userId } = context;
 
-    // 1) hash sul contenuto per identificare file identici già caricati dallo
-    //    stesso utente (scope per utente, ignorato se hash NULL su record vecchi).
     const buffer = await file.arrayBuffer();
     const contentHash = await sha256Hex(buffer);
 
@@ -107,7 +192,6 @@ export const uploadDocument = createServerFn({ method: "POST" })
       .maybeSingle();
 
     if (existing) {
-      // Non carichiamo nulla: il client mostrerà la scelta sostituisci/mantieni
       return {
         duplicate: true as const,
         existing: {
@@ -123,20 +207,21 @@ export const uploadDocument = createServerFn({ method: "POST" })
     return { duplicate: false as const, documentId };
   });
 
-// 1a-bis) Sostituzione: cancella il documento esistente e tutto ciò che gli è
-//         collegato, poi carica il nuovo file. Usato quando l'utente sceglie
-//         "Sostituisci" davanti al dialog di duplicato.
+// 1a-bis) Sostituzione
 export const replaceDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => {
-    if (!(input instanceof FormData)) throw new Error("Expected FormData");
+    if (!(input instanceof FormData)) throw new Error("Richiesta non valida");
     const file = input.get("file");
     const existingId = input.get("existingDocumentId");
     if (!(file instanceof File)) throw new Error("Nessun file caricato");
     if (file.size === 0) throw new Error("File vuoto");
     if (file.size > 20 * 1024 * 1024) throw new Error("File troppo grande (max 20MB)");
-    if (typeof existingId !== "string" || !existingId) throw new Error("ID documento mancante");
-    return { file, existingDocumentId: existingId };
+    if (file.name.length > 255) throw new Error("Nome file troppo lungo");
+    if (typeof existingId !== "string") throw new Error("ID documento mancante");
+    const parsed = uuidSchema.safeParse(existingId);
+    if (!parsed.success) throw new Error("ID documento non valido");
+    return { file, existingDocumentId: parsed.data };
   })
   .handler(async ({ data, context }) => {
     const { file, existingDocumentId } = data;
@@ -144,33 +229,31 @@ export const replaceDocument = createServerFn({ method: "POST" })
     const buffer = await file.arrayBuffer();
     const contentHash = await sha256Hex(buffer);
 
-    // Cancella il vecchio (RLS scopa per utente: nessun rischio di toccare
-    // documenti altrui anche se l'ID viene manipolato lato client).
     await deleteDocumentAndRelated(supabase, existingDocumentId);
 
     const { documentId } = await uploadAndInsertDocument(supabase, userId, file, contentHash);
     return { documentId };
   });
 
-// 1b) Job di estrazione AI. Usa supabaseAdmin per scaricare il file dallo storage
-// (serve service role per leggere file di altri owner-path), ma rispetta lo scope
-// utente caricando il documento dal client autenticato che applica RLS.
+// 1b) Job di estrazione AI
 export const processExtraction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { documentId: string }) => input)
+  .inputValidator((input: { documentId: string }) => {
+    const parsed = z.object({ documentId: uuidSchema }).safeParse(input);
+    if (!parsed.success) throw new Error("ID documento non valido");
+    return parsed.data;
+  })
   .handler(async ({ data, context }) => {
     const { documentId } = data;
     const { supabase } = context;
 
-    // Carica il record (RLS scoped all'utente)
     const { data: doc, error: docErr } = await supabase
       .from("documents")
       .select("storage_path, original_name, mime_type, extraction_status")
       .eq("id", documentId)
       .single();
-    if (docErr || !doc) throw new Error("Documento non trovato");
+    if (docErr || !doc) throw safeError("Documento non trovato", docErr?.message);
 
-    // Idempotenza: se già completato, non rifare
     if (doc.extraction_status === "extracted" || doc.extraction_status === "confirmed") {
       return { ok: true, alreadyDone: true };
     }
@@ -180,7 +263,6 @@ export const processExtraction = createServerFn({ method: "POST" })
       .update({ extraction_status: "processing", extraction_error: null } as never)
       .eq("id", documentId);
 
-    // Download del file: usiamo il client autenticato (le policy filtrano per owner)
     const { data: blob, error: dlErr } = await supabase.storage
       .from("referti")
       .download(doc.storage_path);
@@ -189,10 +271,10 @@ export const processExtraction = createServerFn({ method: "POST" })
         .from("documents")
         .update({
           extraction_status: "failed",
-          extraction_error: `Download fallito: ${dlErr?.message ?? "file mancante"}`,
+          extraction_error: "Impossibile scaricare il file dallo storage",
         } as never)
         .eq("id", documentId);
-      throw new Error("Impossibile scaricare il file dallo storage");
+      throw safeError("Impossibile scaricare il file dallo storage", dlErr?.message);
     }
     const buffer = await blob.arrayBuffer();
 
@@ -209,22 +291,28 @@ export const processExtraction = createServerFn({ method: "POST" })
         .eq("id", documentId);
       return { ok: true };
     } catch (e) {
-      const msg = (e as Error).message ?? "Errore sconosciuto";
+      const internalMsg = (e as Error).message ?? "Errore sconosciuto";
+      console.error("[dashboard] extraction failed", internalMsg);
+      // Salva un messaggio sintetico anche nel DB (visibile all'utente in UI)
       await supabase
         .from("documents")
         .update({
           extraction_status: "failed",
-          extraction_error: msg,
+          extraction_error: "Estrazione automatica non riuscita. Riprova o usa un .docx.",
         } as never)
         .eq("id", documentId);
-      throw e;
+      throw safeError("Estrazione automatica non riuscita. Riprova o usa un .docx.");
     }
   });
 
 // 1c) Polling: ritorna lo stato + l'estratto se pronto
 export const getExtractionStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { documentId: string }) => input)
+  .inputValidator((input: { documentId: string }) => {
+    const parsed = z.object({ documentId: uuidSchema }).safeParse(input);
+    if (!parsed.success) throw new Error("ID documento non valido");
+    return parsed.data;
+  })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { data: doc, error } = await supabase
@@ -232,7 +320,7 @@ export const getExtractionStatus = createServerFn({ method: "POST" })
       .select("extraction_status, extraction_raw, extraction_error")
       .eq("id", data.documentId)
       .single();
-    if (error || !doc) throw new Error("Documento non trovato");
+    if (error || !doc) throw safeError("Documento non trovato", error?.message);
     return {
       status: doc.extraction_status as "pending" | "processing" | "extracted" | "confirmed" | "failed",
       extracted: (doc.extraction_raw as ExtractedData | null) ?? null,
@@ -243,7 +331,16 @@ export const getExtractionStatus = createServerFn({ method: "POST" })
 // 2) Conferma e salva i dati definitivi
 export const saveConfirmedData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { documentId: string; data: ExtractedData }) => input)
+  .inputValidator((input: { documentId: string; data: ExtractedData }) => {
+    const parsed = z
+      .object({ documentId: uuidSchema, data: extractedDataSchema })
+      .safeParse(input);
+    if (!parsed.success) {
+      console.error("[dashboard] saveConfirmedData validation", parsed.error.flatten());
+      throw new Error("Dati non validi: controlla i campi compilati.");
+    }
+    return parsed.data;
+  })
   .handler(async ({ data, context }) => {
     const { documentId, data: extracted } = data;
     const { supabase, userId } = context;
@@ -267,7 +364,9 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
         } as never)
         .select("id")
         .single();
-      if (visitErr || !visitRow) throw new Error(`Errore creazione visita: ${visitErr?.message}`);
+      if (visitErr || !visitRow) {
+        throw safeError("Impossibile salvare la visita. Riprova.", visitErr?.message);
+      }
       const visitId = visitRow.id;
       visitIds.push(visitId);
 
@@ -276,7 +375,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
         const { error } = await supabase
           .from("circumferences")
           .insert({ user_id: userId, visit_id: visitId, ...c } as never);
-        if (error) throw new Error(`Errore circonferenze: ${error.message}`);
+        if (error) throw safeError("Impossibile salvare le circonferenze.", error.message);
       }
 
       const bc = v.body_composition;
@@ -284,7 +383,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
         const { error } = await supabase
           .from("body_composition")
           .insert({ user_id: userId, visit_id: visitId, ...bc } as never);
-        if (error) throw new Error(`Errore composizione: ${error.message}`);
+        if (error) throw safeError("Impossibile salvare la composizione corporea.", error.message);
       }
 
       if (v.dexa_segments?.length) {
@@ -293,7 +392,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
           .map((s) => ({ user_id: userId, visit_id: visitId, ...s }));
         if (rows.length) {
           const { error } = await supabase.from("dexa_segments").insert(rows as never);
-          if (error) throw new Error(`Errore DEXA: ${error.message}`);
+          if (error) throw safeError("Impossibile salvare i dati DEXA.", error.message);
         }
       }
     }
@@ -304,11 +403,11 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
         .map((t) => ({ ...t, user_id: userId, visit_id: visitIds[0] }));
       if (rows.length) {
         const { error } = await supabase.from("blood_tests").insert(rows as never);
-        if (error) throw new Error(`Errore esami: ${error.message}`);
+        if (error) throw safeError("Impossibile salvare gli esami del sangue.", error.message);
       }
     }
 
-    // Profilo (merge dei campi non nulli) — ne esiste già uno per utente (creato dal trigger)
+    // Profilo (merge dei campi non nulli)
     const pu = extracted.profile_updates;
     const updates: Record<string, unknown> = {};
     for (const [k, val] of Object.entries(pu)) {
@@ -326,7 +425,7 @@ export const saveConfirmedData = createServerFn({ method: "POST" })
     return { visitIds, count: visitIds.length };
   });
 
-// 3) Carica tutti i dati per la dashboard (RLS scopa automaticamente all'utente)
+// 3) Carica tutti i dati per la dashboard
 export const getDashboardData = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -355,21 +454,31 @@ export const getDashboardData = createServerFn({ method: "GET" })
 // 4) Aggiorna peso target
 export const updateTargetWeight = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { target_weight_kg: number | null }) => input)
+  .inputValidator((input: { target_weight_kg: number | null }) => {
+    const parsed = z
+      .object({ target_weight_kg: z.number().min(20).max(500).nullable() })
+      .safeParse(input);
+    if (!parsed.success) throw new Error("Peso target non valido (20-500 kg)");
+    return parsed.data;
+  })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { error } = await supabase
       .from("profile")
       .update({ target_weight_kg: data.target_weight_kg })
       .eq("user_id", userId);
-    if (error) throw new Error(error.message);
+    if (error) throw safeError("Impossibile aggiornare il peso target.", error.message);
     return { ok: true };
   });
 
 // 5) Elimina visita (e documento collegato se presente)
 export const deleteVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { visitId: string }) => input)
+  .inputValidator((input: { visitId: string }) => {
+    const parsed = z.object({ visitId: uuidSchema }).safeParse(input);
+    if (!parsed.success) throw new Error("ID visita non valido");
+    return parsed.data;
+  })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { data: visit } = await supabase
@@ -395,7 +504,11 @@ export const deleteVisit = createServerFn({ method: "POST" })
 // 6) Crea signed URL per scaricare un documento
 export const getDocumentUrl = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { documentId: string }) => input)
+  .inputValidator((input: { documentId: string }) => {
+    const parsed = z.object({ documentId: uuidSchema }).safeParse(input);
+    if (!parsed.success) throw new Error("ID documento non valido");
+    return parsed.data;
+  })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { data: doc } = await supabase
@@ -407,7 +520,7 @@ export const getDocumentUrl = createServerFn({ method: "POST" })
     const { data: signed, error } = await supabase.storage
       .from("referti")
       .createSignedUrl(doc.storage_path, 60 * 5);
-    if (error) throw new Error(error.message);
+    if (error) throw safeError("Impossibile generare il link di download.", error.message);
     return { url: signed.signedUrl, name: doc.original_name };
   });
 
@@ -415,15 +528,13 @@ export const getDocumentUrl = createServerFn({ method: "POST" })
 export const hardResetAllData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { confirm: string }) => {
-    if (input.confirm !== "RESET") throw new Error("Conferma mancante: scrivi RESET");
-    return input;
+    const parsed = z.object({ confirm: z.literal("RESET") }).safeParse(input);
+    if (!parsed.success) throw new Error("Conferma mancante: scrivi RESET");
+    return parsed.data;
   })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
 
-    // 1) Rimuovi tutti i file dell'utente nel bucket "referti".
-    //    I file sono archiviati con path `referti/<userId>/...` quindi possiamo
-    //    listare la cartella e cancellarli col client autenticato.
     const userFolder = `referti/${userId}`;
     const { data: ownedFiles } = await supabase.storage.from("referti").list(userFolder, { limit: 1000 });
     if (ownedFiles && ownedFiles.length) {
@@ -431,9 +542,6 @@ export const hardResetAllData = createServerFn({ method: "POST" })
       await supabase.storage.from("referti").remove(paths);
     }
 
-    // 2) Cancella le righe (le FK ON DELETE CASCADE su user_id farebbero la stessa cosa,
-    //    ma non vogliamo cancellare l'auth user — solo i suoi dati).
-    //    L'ordine non importa qui perché RLS già scopa per user_id.
     await supabase.from("blood_tests").delete().eq("user_id", userId);
     await supabase.from("dexa_segments").delete().eq("user_id", userId);
     await supabase.from("body_composition").delete().eq("user_id", userId);
@@ -441,7 +549,6 @@ export const hardResetAllData = createServerFn({ method: "POST" })
     await supabase.from("visits").delete().eq("user_id", userId);
     await supabase.from("documents").delete().eq("user_id", userId);
 
-    // 3) Reset campi profilo (manteniamo la riga, è collegata all'utente auth)
     await supabase
       .from("profile")
       .update({
