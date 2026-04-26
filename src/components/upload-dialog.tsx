@@ -406,6 +406,21 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               </Button>
             </>
           )}
+          {step === "duplicate" && duplicate && (
+            <>
+              <Button variant="ghost" onClick={() => handleClose(false)}>
+                Mantieni esistente
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={!file || replaceMut.isPending}
+                onClick={() => file && replaceMut.mutate({ f: file, existingDocumentId: duplicate.documentId })}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sostituisci e analizza
+              </Button>
+            </>
+          )}
           {step === "processing" && (
             <Button variant="ghost" onClick={() => handleClose(false)}>
               Chiudi (continua in background)
