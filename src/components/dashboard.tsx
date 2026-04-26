@@ -167,7 +167,7 @@ export function Dashboard() {
         ) : (
           <>
             {/* HEADER RIEPILOGATIVO + OBIETTIVO */}
-            <Card className="overflow-hidden border-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
+            <Card id="kpi-section" className="overflow-hidden border-0 bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
               <CardContent className="p-6 sm:p-8">
                 <div className="grid gap-6 sm:grid-cols-3">
                   <div>
