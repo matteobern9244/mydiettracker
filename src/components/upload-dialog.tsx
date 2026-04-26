@@ -65,14 +65,17 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [activeIdx, setActiveIdx] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qc = useQueryClient();
   const uploadFnRaw = useServerFn(uploadDocument);
+  const replaceFnRaw = useServerFn(replaceDocument);
   const processFnRaw = useServerFn(processExtraction);
   const statusFnRaw = useServerFn(getExtractionStatus);
   const saveFnRaw = useServerFn(saveConfirmedData);
   const uploadFn = withAuth(uploadFnRaw);
+  const replaceFn = withAuth(replaceFnRaw);
   const processFn = withAuth(processFnRaw);
   const statusFn = withAuth(statusFnRaw);
   const saveFn = withAuth(saveFnRaw);
