@@ -657,8 +657,8 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                   <div className="mt-2 space-y-1">
                     <Progress value={pct} className="h-1.5" />
                     <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-                      <span>~{pct}%</span>
-                      <span>{elapsedSec}s trascorsi</span>
+                      <span>~{pct}% · {elapsedSec}s trascorsi</span>
+                      <span>{formatRemaining(remainingMs)}</span>
                     </div>
                   </div>
                 )}
