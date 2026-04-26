@@ -100,5 +100,17 @@ export interface ExtractedData {
   body_composition: BodyComposition;
   dexa_segments: DexaSegment[];
   blood_tests: Array<Omit<BloodTest, "id" | "notes"> & { notes?: string | null }>;
-  profile_updates: Partial<Profile>;
+  profile_updates: ProfileUpdates;
+}
+
+export interface ProfileUpdates {
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  profession?: string | null;
+  age?: number | null;
+  height_cm?: number | null;
+  family_doctor?: string | null;
+  allergies?: string | null;
+  intolerances?: string | null;
 }
