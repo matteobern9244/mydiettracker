@@ -377,6 +377,9 @@ export function Dashboard() {
               </TabsContent>
             </Tabs>
 
+            {/* Documenti caricati con stato estrazione */}
+            <DocumentsPanel documents={documents as DocumentRow[]} />
+
             {/* Zona pericolosa */}
             <DangerZone />
           </>
