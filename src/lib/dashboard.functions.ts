@@ -46,7 +46,7 @@ export const uploadAndExtract = createServerFn({ method: "POST" })
     // 3) Estrai testo
     let text = "";
     try {
-      text = await extractTextFromDoc(buffer);
+      text = await extractTextFromDoc(buffer, file.name);
     } catch (e) {
       await supabaseAdmin
         .from("documents")
