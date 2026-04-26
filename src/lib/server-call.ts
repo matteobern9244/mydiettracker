@@ -4,25 +4,28 @@
 // quindi dobbiamo aggiungerlo esplicitamente prima di ogni chiamata.
 import { supabase } from "@/integrations/supabase/client";
 
-type ServerFn<TInput, TOutput> = (opts: {
-  data?: TInput;
-  headers?: Record<string, string>;
-}) => Promise<TOutput>;
-
 /**
  * Wrappa una server function aggiungendo automaticamente l'header
  * `Authorization: Bearer <access_token>` letto dalla sessione Supabase corrente.
+ *
+ * Tipizzato in modo permissivo: il client server-fn di TanStack ha una firma
+ * complessa con generics di middleware, ma a runtime accetta `{ data, headers }`.
  */
-export function withAuth<TInput, TOutput>(fn: ServerFn<TInput, TOutput>) {
-  return async (opts?: { data?: TInput }): Promise<TOutput> => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function withAuth<TFn extends (opts: any) => any>(fn: TFn) {
+  return async (opts?: Parameters<TFn>[0]): Promise<Awaited<ReturnType<TFn>>> => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
       throw new Error("Sessione scaduta. Effettua di nuovo il login.");
     }
-    return fn({
-      data: opts?.data,
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const merged = {
+      ...(opts ?? {}),
+      headers: {
+        ...((opts as { headers?: Record<string, string> } | undefined)?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
+    };
+    return fn(merged);
   };
 }
