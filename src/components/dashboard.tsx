@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw, LogOut } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +15,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { UploadDialog } from "@/components/upload-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { InsightCard } from "@/components/insight-card";
+import { SectionFilter, filterByDate, type DatePreset } from "@/components/section-filter";
+
+const dashRoute = getRouteApi("/_authenticated/");
 import {
   getDashboardData,
   updateTargetWeight,
@@ -72,11 +76,40 @@ export function Dashboard() {
   const bloodTests: BloodTest[] = (data?.blood_tests ?? []) as BloodTest[];
   const documents = data?.documents ?? [];
 
+  // === FILTRI da URL search params ===
+  const search = dashRoute.useSearch();
+  const navigate = useNavigate({ from: "/" });
+  const setSearch = (patch: Record<string, unknown>) =>
+    navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, ...patch }) as never, replace: true });
+
+  // Helper per aggiornare un filtro di sezione (preset/from/to)
+  const buildPresetSetter = (sec: "weight" | "comp" | "circ" | "blood") =>
+    (preset: DatePreset, from?: string, to?: string) =>
+      setSearch({ [`${sec}Preset`]: preset, [`${sec}From`]: from, [`${sec}To`]: to });
+
+  // Visite filtrate per sezione (le serie temporali derivano da queste)
+  const weightVisits = useMemo(
+    () => filterByDate(visits, search.weightPreset, search.weightFrom, search.weightTo),
+    [visits, search.weightPreset, search.weightFrom, search.weightTo],
+  );
+  const compVisits = useMemo(
+    () => filterByDate(visits, search.compPreset, search.compFrom, search.compTo),
+    [visits, search.compPreset, search.compFrom, search.compTo],
+  );
+  const circVisits = useMemo(
+    () => filterByDate(visits, search.circPreset, search.circFrom, search.circTo),
+    [visits, search.circPreset, search.circFrom, search.circTo],
+  );
+  const bloodFiltered = useMemo(
+    () => filterByDate(bloodTests, search.bloodPreset, search.bloodFrom, search.bloodTo),
+    [bloodTests, search.bloodPreset, search.bloodFrom, search.bloodTo],
+  );
+
   const lastVisit = visits[visits.length - 1] ?? null;
   const prevVisit = visits[visits.length - 2] ?? null;
   const firstVisit = visits[0] ?? null;
 
-  const weightSeries = visits
+  const weightSeries = weightVisits
     .filter((v) => v.weight_kg != null)
     .map((v) => ({ date: v.visit_date, peso: Number(v.weight_kg) }));
 
@@ -240,7 +273,11 @@ export function Dashboard() {
             {/* INSIGHT GLOBALE */}
             {weightInsight && <InsightCard insight={weightInsight} />}
 
-            <Tabs defaultValue="weight" className="space-y-4">
+            <Tabs
+              value={search.tab}
+              onValueChange={(v) => setSearch({ tab: v })}
+              className="space-y-4"
+            >
               <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto">
                 <TabsTrigger value="weight">Peso & BMI</TabsTrigger>
                 <TabsTrigger value="composition">Composizione</TabsTrigger>
@@ -251,15 +288,21 @@ export function Dashboard() {
 
               {/* PESO & BMI */}
               <TabsContent value="weight" className="space-y-4">
+                <SectionFilter
+                  preset={search.weightPreset}
+                  from={search.weightFrom}
+                  to={search.weightTo}
+                  onPresetChange={buildPresetSetter("weight")}
+                />
                 <div className="grid gap-4 sm:grid-cols-3">
                   <KpiCard title="Peso attuale" value={`${formatNumber(currentWeight, 1)} kg`} sub={startWeight != null && currentWeight != null ? `${(currentWeight - startWeight >= 0 ? "+" : "")}${formatNumber(currentWeight - startWeight, 1)} kg dall'inizio` : ""} />
                   <KpiCard title="BMI" value={formatNumber(bmi, 1)} badge={<StatusBadge status={bmiEv.status}>{bmiEv.label}</StatusBadge>} />
-                  <KpiCard title="Visite registrate" value={String(visits.length)} sub={firstVisit ? `dal ${formatDate(firstVisit.visit_date)}` : ""} />
+                  <KpiCard title="Visite nel periodo" value={String(weightVisits.length)} sub={firstVisit ? `totali: ${visits.length}` : ""} />
                 </div>
                 <Card>
                   <CardHeader>
                     <CardTitle>Andamento del peso</CardTitle>
-                    <CardDescription>Tutte le pesate in ordine cronologico</CardDescription>
+                    <CardDescription>{weightSeries.length} pesate nel periodo selezionato</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ChartLine data={weightSeries} dataKey="peso" unit="kg" />
@@ -269,6 +312,20 @@ export function Dashboard() {
 
               {/* COMPOSIZIONE */}
               <TabsContent value="composition" className="space-y-4">
+                <SectionFilter
+                  preset={search.compPreset}
+                  from={search.compFrom}
+                  to={search.compTo}
+                  onPresetChange={buildPresetSetter("comp")}
+                  metrics={[
+                    { value: "fat_pct", label: "Massa grassa %" },
+                    { value: "lean_kg", label: "Massa magra kg" },
+                    { value: "visceral", label: "Grasso viscerale" },
+                    { value: "metabolic_age", label: "Età metabolica" },
+                  ]}
+                  selectedMetrics={search.compMetrics}
+                  onMetricsChange={(next) => setSearch({ compMetrics: next })}
+                />
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <KpiCard title="Massa grassa" value={`${formatNumber(fatPct, 1)} %`} badge={<StatusBadge status={fatMassLabel(fatPct).status}>{fatMassLabel(fatPct).label}</StatusBadge>} />
                   <KpiCard title="Massa magra" value={`${formatNumber(lastVisit?.body_composition?.lean_mass_kg != null ? Number(lastVisit.body_composition.lean_mass_kg) : null, 1)} kg`} />
@@ -277,35 +334,52 @@ export function Dashboard() {
                 </div>
                 {bcInsights.map((ins, i) => <InsightCard key={i} insight={ins} />)}
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <Card>
-                    <CardHeader><CardTitle className="text-base">Massa grassa %</CardTitle></CardHeader>
-                    <CardContent>
-                      <ChartLine data={visits.filter(v => v.body_composition?.fat_mass_pct != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.fat_mass_pct) }))} dataKey="val" unit="%" />
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader><CardTitle className="text-base">Massa magra kg</CardTitle></CardHeader>
-                    <CardContent>
-                      <ChartLine data={visits.filter(v => v.body_composition?.lean_mass_kg != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.lean_mass_kg) }))} dataKey="val" unit="kg" />
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader><CardTitle className="text-base">Grasso viscerale</CardTitle></CardHeader>
-                    <CardContent>
-                      <ChartLine data={visits.filter(v => v.body_composition?.visceral_fat != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.visceral_fat) }))} dataKey="val" />
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader><CardTitle className="text-base">Età metabolica</CardTitle></CardHeader>
-                    <CardContent>
-                      <ChartLine data={visits.filter(v => v.body_composition?.metabolic_age != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.metabolic_age) }))} dataKey="val" unit="anni" />
-                    </CardContent>
-                  </Card>
+                  {search.compMetrics.includes("fat_pct") && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Massa grassa %</CardTitle></CardHeader>
+                      <CardContent>
+                        <ChartLine data={compVisits.filter(v => v.body_composition?.fat_mass_pct != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.fat_mass_pct) }))} dataKey="val" unit="%" />
+                      </CardContent>
+                    </Card>
+                  )}
+                  {search.compMetrics.includes("lean_kg") && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Massa magra kg</CardTitle></CardHeader>
+                      <CardContent>
+                        <ChartLine data={compVisits.filter(v => v.body_composition?.lean_mass_kg != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.lean_mass_kg) }))} dataKey="val" unit="kg" />
+                      </CardContent>
+                    </Card>
+                  )}
+                  {search.compMetrics.includes("visceral") && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Grasso viscerale</CardTitle></CardHeader>
+                      <CardContent>
+                        <ChartLine data={compVisits.filter(v => v.body_composition?.visceral_fat != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.visceral_fat) }))} dataKey="val" />
+                      </CardContent>
+                    </Card>
+                  )}
+                  {search.compMetrics.includes("metabolic_age") && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">Età metabolica</CardTitle></CardHeader>
+                      <CardContent>
+                        <ChartLine data={compVisits.filter(v => v.body_composition?.metabolic_age != null).map(v => ({ date: v.visit_date, val: Number(v.body_composition!.metabolic_age) }))} dataKey="val" unit="anni" />
+                      </CardContent>
+                    </Card>
+                  )}
+                  {search.compMetrics.length === 0 && (
+                    <p className="col-span-full text-sm text-muted-foreground italic">Nessuna metrica selezionata. Apri il filtro "Metriche" per attivarne almeno una.</p>
+                  )}
                 </div>
               </TabsContent>
 
               {/* CIRCONFERENZE */}
               <TabsContent value="circ" className="space-y-4">
+                <SectionFilter
+                  preset={search.circPreset}
+                  from={search.circFrom}
+                  to={search.circTo}
+                  onPresetChange={buildPresetSetter("circ")}
+                />
                 <div className="grid gap-4 sm:grid-cols-3">
                   <KpiCard title="Vita" value={`${formatNumber(waist, 1)} cm`} />
                   <KpiCard title="Addome" value={`${formatNumber(lastVisit?.circumferences?.abdomen_cm != null ? Number(lastVisit.circumferences.abdomen_cm) : null, 1)} cm`} />
@@ -315,19 +389,37 @@ export function Dashboard() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Andamento circonferenze</CardTitle>
+                    <CardDescription>{circVisits.length} visite nel periodo</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <CircChart visits={visits} />
+                    <CircChart visits={circVisits} />
                   </CardContent>
                 </Card>
               </TabsContent>
 
               {/* ESAMI */}
               <TabsContent value="blood" className="space-y-4">
+                <SectionFilter
+                  preset={search.bloodPreset}
+                  from={search.bloodFrom}
+                  to={search.bloodTo}
+                  onPresetChange={buildPresetSetter("blood")}
+                  metrics={Object.entries(BLOOD_MARKERS).map(([k, m]) => ({ value: k as never, label: m.label }))}
+                  selectedMetrics={
+                    // Se l'utente non ha selezionato nulla, mostriamo tutti
+                    search.bloodMetrics.length === 0
+                      ? (Object.keys(BLOOD_MARKERS) as never[])
+                      : (search.bloodMetrics as never[])
+                  }
+                  onMetricsChange={(next) => setSearch({ bloodMetrics: next })}
+                />
                 {bloodInsights.map((ins, i) => <InsightCard key={i} insight={ins} />)}
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {Object.entries(BLOOD_MARKERS).map(([key, m]) => {
-                    const series = bloodTests
+                    // Filtro metrica: se la lista è vuota, le mostriamo tutte; altrimenti solo le selezionate.
+                    const visible = search.bloodMetrics.length === 0 || (search.bloodMetrics as string[]).includes(key);
+                    if (!visible) return null;
+                    const series = bloodFiltered
                       .filter((t) => (t as never as Record<string, unknown>)[key] != null)
                       .map((t) => ({ date: t.test_date, val: Number((t as never as Record<string, number>)[key]) }));
                     if (series.length === 0) return null;
@@ -351,6 +443,9 @@ export function Dashboard() {
                       </Card>
                     );
                   })}
+                  {bloodFiltered.length === 0 && (
+                    <p className="col-span-full text-sm text-muted-foreground italic">Nessun esame nel periodo selezionato.</p>
+                  )}
                 </div>
               </TabsContent>
 
