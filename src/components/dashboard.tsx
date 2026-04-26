@@ -630,6 +630,10 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
           const cooldownLeftSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
           const retryDisabled = isRetrying || d.extraction_status === "processing" || cooldownLeftSec > 0;
           const elapsedSec = Math.round(elapsedMs / 1000);
+          const expectedMs = expectedDurationMs(d.size_bytes, d.mime_type);
+          const progress01 = isActive ? estimateProgress(elapsedMs, expectedMs) : 0;
+          const pct = Math.round(progress01 * 100);
+          const remainingMs = isActive ? Math.max(0, expectedMs - elapsedMs) : 0;
 
           return (
             <div
