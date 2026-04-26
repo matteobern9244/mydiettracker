@@ -429,7 +429,7 @@ function writeCooldowns(map: Record<string, number>) {
   }
 }
 
-
+function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const qc = useQueryClient();
   const getDocUrl = useServerFn(getDocumentUrl);
   const processFn = useServerFn(processExtraction);
