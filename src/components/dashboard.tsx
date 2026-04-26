@@ -20,6 +20,8 @@ import {
   deleteVisit,
   getDocumentUrl,
   hardResetAllData,
+  processExtraction,
+  getExtractionStatus,
 } from "@/lib/dashboard.functions";
 import { HardResetDialog } from "@/components/hard-reset-dialog";
 import {
