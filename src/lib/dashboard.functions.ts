@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { extractTextFromDoc, extractWithAI } from "@/lib/extraction.server";
+import { extractDocumentInput, extractWithAI } from "@/lib/extraction.server";
 import type { ExtractedData } from "@/lib/types";
 
 // 1) Upload del file → estrazione AI → ritorna {documentId, extracted}
