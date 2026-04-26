@@ -76,6 +76,35 @@ export function Dashboard() {
   const bloodTests: BloodTest[] = (data?.blood_tests ?? []) as BloodTest[];
   const documents = data?.documents ?? [];
 
+  // === FILTRI da URL search params ===
+  const search = dashRoute.useSearch();
+  const navigate = useNavigate({ from: "/" });
+  const setSearch = (patch: Record<string, unknown>) =>
+    navigate({ search: (prev) => ({ ...prev, ...patch }) as never, replace: true });
+
+  // Helper per aggiornare un filtro di sezione (preset/from/to)
+  const buildPresetSetter = (sec: "weight" | "comp" | "circ" | "blood") =>
+    (preset: DatePreset, from?: string, to?: string) =>
+      setSearch({ [`${sec}Preset`]: preset, [`${sec}From`]: from, [`${sec}To`]: to });
+
+  // Visite filtrate per sezione (le serie temporali derivano da queste)
+  const weightVisits = useMemo(
+    () => filterByDate(visits, search.weightPreset, search.weightFrom, search.weightTo),
+    [visits, search.weightPreset, search.weightFrom, search.weightTo],
+  );
+  const compVisits = useMemo(
+    () => filterByDate(visits, search.compPreset, search.compFrom, search.compTo),
+    [visits, search.compPreset, search.compFrom, search.compTo],
+  );
+  const circVisits = useMemo(
+    () => filterByDate(visits, search.circPreset, search.circFrom, search.circTo),
+    [visits, search.circPreset, search.circFrom, search.circTo],
+  );
+  const bloodFiltered = useMemo(
+    () => filterByDate(bloodTests, search.bloodPreset, search.bloodFrom, search.bloodTo),
+    [bloodTests, search.bloodPreset, search.bloodFrom, search.bloodTo],
+  );
+
   const lastVisit = visits[visits.length - 1] ?? null;
   const prevVisit = visits[visits.length - 2] ?? null;
   const firstVisit = visits[0] ?? null;
