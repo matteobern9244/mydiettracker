@@ -206,7 +206,7 @@ export function Dashboard() {
                 await signOut();
                 qc.removeQueries({ queryKey: ["dashboard"] });
                 toast.success("Sei uscito.");
-                navigate({ to: "/login", replace: true });
+                navigate({ to: "/login", search: { redirect: "/" }, replace: true });
               }}
               title="Esci"
               aria-label="Esci"
