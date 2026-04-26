@@ -330,9 +330,27 @@ export function UploadDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           </div>
         )}
 
+        {step === "duplicate" && duplicate && (
+          <div className="space-y-4 py-4">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">File identico già presente</p>
+                <p className="text-muted-foreground">
+                  Avevi caricato <span className="font-medium text-foreground">{duplicate.originalName}</span>{" "}
+                  il {new Date(duplicate.uploadedAt).toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Se scegli <span className="font-medium text-foreground">Sostituisci</span>, il documento precedente e
+              tutti i dati che ne erano stati salvati (visite, circonferenze, composizione, DEXA) verranno eliminati,
+              poi il nuovo file verrà analizzato dall'AI.
+            </p>
+          </div>
+        )}
+
         {step === "processing" && (
-          <div className="flex flex-col items-center gap-4 py-12">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <div className="text-center space-y-1">
               <p className="font-medium">Sto analizzando il referto…</p>
               <p className="text-sm text-muted-foreground tabular-nums">
