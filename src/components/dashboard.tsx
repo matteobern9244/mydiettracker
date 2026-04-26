@@ -492,9 +492,9 @@ function writeCooldowns(map: Record<string, number>) {
 
 function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const qc = useQueryClient();
-  const getDocUrl = useServerFn(getDocumentUrl);
-  const processFn = useServerFn(processExtraction);
-  const statusFn = useServerFn(getExtractionStatus);
+  const getDocUrl = withAuth(useServerFn(getDocumentUrl));
+  const processFn = withAuth(useServerFn(processExtraction));
+  const statusFn = withAuth(useServerFn(getExtractionStatus));
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [cooldowns, setCooldowns] = useState<Record<string, number>>(() => readCooldowns());
