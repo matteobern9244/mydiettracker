@@ -408,8 +408,9 @@ export const generateShoppingList = createServerFn({ method: "POST" })
 export const getShoppingList = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { weekStart: string }) => {
+    console.log("[getShoppingList] input:", JSON.stringify(input));
     const parsed = z.object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(input);
-    if (!parsed.success) throw new Error("Data non valida");
+    if (!parsed.success) throw new Error(`Data non valida: ${JSON.stringify(input)}`);
     return parsed.data;
   })
   .handler(async ({ data, context }) => {
