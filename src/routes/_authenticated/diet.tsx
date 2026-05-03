@@ -189,7 +189,7 @@ function DietPage() {
 
   const setView = (v: "week" | "day") => navigate({ search: (s: Record<string, unknown>) => ({ ...s, view: v }) as never });
   const setTab = (t: typeof tab) => navigate({ search: (s: Record<string, unknown>) => ({ ...s, tab: t }) as never });
-  const setDate = (d: Date) => navigate({ search: (s: Record<string, unknown>) => ({ ...s, date: isoDate(d) }) as never });
+  const setDate = (d: Date) => navigate({ search: (s: Record<string, unknown>) => ({ ...s, date: isoDate(d) }) as never, replace: true });
 
   const weeklyAdherence = useMemo(() => {
     let total = 0, done = 0;
@@ -868,6 +868,7 @@ function ShoppingView({
 
   useEffect(() => {
     setLoading(true);
+    setItems(null);
     onLoad().then((r) => { setItems(r.items); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
