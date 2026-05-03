@@ -136,9 +136,9 @@ function DietPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const setView = (v: "week" | "day") => navigate({ search: (s) => ({ ...s, view: v }) });
-  const setTab = (t: typeof tab) => navigate({ search: (s) => ({ ...s, tab: t }) });
-  const setDate = (d: Date) => navigate({ search: (s) => ({ ...s, date: isoDate(d) }) });
+  const setView = (v: "week" | "day") => navigate({ search: (s: Record<string, unknown>) => ({ ...s, view: v }) as never });
+  const setTab = (t: typeof tab) => navigate({ search: (s: Record<string, unknown>) => ({ ...s, tab: t }) as never });
+  const setDate = (d: Date) => navigate({ search: (s: Record<string, unknown>) => ({ ...s, date: isoDate(d) }) as never });
 
   // Aderenza settimanale
   const weeklyAdherence = useMemo(() => {
