@@ -58,7 +58,7 @@ function LoginPage() {
               <Activity className="h-7 w-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Il mio percorso</h1>
+              <h1 className="text-2xl font-bold">My Diet Tracker</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Accedi per visualizzare la tua dashboard personale.
               </p>
