@@ -191,6 +191,12 @@ export function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="rounded-full">
+              <Link to="/diet">
+                <UtensilsCrossed className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Dieta</span>
+              </Link>
+            </Button>
             <Button onClick={() => setUploadOpen(true)} className="rounded-full shadow-[var(--shadow-soft)]">
               <Upload className="mr-2 h-4 w-4" />
               <span className="hidden sm:inline">Carica referto</span>
