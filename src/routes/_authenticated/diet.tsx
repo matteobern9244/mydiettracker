@@ -75,7 +75,18 @@ const SLOT_LABEL_SHORT: Record<MealSlot, string> = {
 const DAY_LABEL = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const DAY_LABEL_LONG = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 
-function isoDate(d: Date): string { return d.toISOString().slice(0, 10); }
+function isoDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+function parseIsoDateLocal(value: string | undefined, fallbackDate: Date): Date {
+  if (!value) return fallbackDate;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return fallbackDate;
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
 function startOfWeek(d: Date): Date {
   const dt = new Date(d);
   const day = (dt.getDay() + 6) % 7;
@@ -102,7 +113,7 @@ function DietPage() {
   const view = search.view ?? (isMobile ? "day" : "week");
   const tab = search.tab;
   const today = useMemo(() => new Date(), []);
-  const currentDate = search.date ? new Date(search.date) : today;
+  const currentDate = parseIsoDateLocal(search.date, today);
   const weekStart = startOfWeek(currentDate);
 
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -341,12 +352,10 @@ function DietPage() {
             <TabsContent value="shopping" className="mt-4">
               <ShoppingView
                 weekStart={isoDate(weekStart)}
-                onGenerate={() => genShopFn({ data: { weekStart: isoDate(weekStart) } })}
-                onLoad={() => getShopFn({ data: { weekStart: isoDate(weekStart) } })}
-                onSave={(items) => updShopFn({ data: { weekStart: isoDate(weekStart), items } })}
-                onClear={() => clearShopFn({ data: { weekStart: isoDate(weekStart) } })}
-                onPrev={() => setDate(addDays(weekStart, -7))}
-                onNext={() => setDate(addDays(weekStart, 7))}
+                onGenerate={(targetWeekStart: string) => genShopFn({ data: { weekStart: targetWeekStart } })}
+                onLoad={(targetWeekStart: string) => getShopFn({ data: { weekStart: targetWeekStart } })}
+                onSave={(targetWeekStart: string, items: ShoppingItem[]) => updShopFn({ data: { weekStart: targetWeekStart, items } })}
+                onClear={(targetWeekStart: string) => clearShopFn({ data: { weekStart: targetWeekStart } })}
               />
             </TabsContent>
           </Tabs>
@@ -852,27 +861,30 @@ function GuidelinesView({ guidelines }: { guidelines: GuidelineItem[] }) {
 // Shopping
 // ─────────────────────────────────────────────────────────────────────────────
 function ShoppingView({
-  weekStart, onGenerate, onLoad, onSave, onClear, onPrev, onNext,
+  weekStart, onGenerate, onLoad, onSave, onClear,
 }: {
   weekStart: string;
-  onGenerate: () => Promise<{ items: ShoppingItem[] }>;
-  onLoad: () => Promise<{ items: ShoppingItem[] | null }>;
-  onSave: (items: ShoppingItem[]) => Promise<{ ok: boolean }>;
-  onClear: () => Promise<{ ok: boolean }>;
-  onPrev: () => void;
-  onNext: () => void;
+  onGenerate: (weekStart: string) => Promise<{ items: ShoppingItem[] }>;
+  onLoad: (weekStart: string) => Promise<{ items: ShoppingItem[] | null }>;
+  onSave: (weekStart: string, items: ShoppingItem[]) => Promise<{ ok: boolean }>;
+  onClear: (weekStart: string) => Promise<{ ok: boolean }>;
 }) {
+  const [selectedWeekStart, setSelectedWeekStart] = useState(weekStart);
   const [items, setItems] = useState<ShoppingItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
+    setSelectedWeekStart(weekStart);
+  }, [weekStart]);
+
+  useEffect(() => {
     setLoading(true);
     setItems(null);
-    onLoad().then((r) => { setItems(r.items); setLoading(false); }).catch(() => setLoading(false));
+    onLoad(selectedWeekStart).then((r) => { setItems(r.items); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart]);
+  }, [selectedWeekStart]);
 
   const grouped = useMemo(() => {
     if (!items) return {};
@@ -886,7 +898,7 @@ function ShoppingView({
 
   const update = (newItems: ShoppingItem[]) => {
     setItems(newItems);
-    onSave(newItems).catch((e) => toast.error((e as Error).message));
+    onSave(selectedWeekStart, newItems).catch((e) => toast.error((e as Error).message));
   };
 
   return (
@@ -896,14 +908,14 @@ function ShoppingView({
           <div className="min-w-0">
             <CardTitle className="text-sm">Lista della spesa</CardTitle>
             <CardDescription className="truncate">
-              Settimana del {new Date(weekStart).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}
+              Settimana del {parseIsoDateLocal(selectedWeekStart, new Date()).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}
             </CardDescription>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <Button size="icon" variant="outline" onClick={onPrev} aria-label="Settimana precedente">
+            <Button size="icon" variant="outline" onClick={() => setSelectedWeekStart(isoDate(addDays(parseIsoDateLocal(selectedWeekStart, new Date()), -7)))} aria-label="Settimana precedente">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="outline" onClick={onNext} aria-label="Settimana successiva">
+            <Button size="icon" variant="outline" onClick={() => setSelectedWeekStart(isoDate(addDays(parseIsoDateLocal(selectedWeekStart, new Date()), 7)))} aria-label="Settimana successiva">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -916,7 +928,7 @@ function ShoppingView({
             onClick={async () => {
               setGenerating(true);
               try {
-                const r = await onGenerate();
+                const r = await onGenerate(selectedWeekStart);
                 setItems(r.items);
                 toast.success("Lista generata dal piano settimanale");
               } catch (e) { toast.error((e as Error).message); }
@@ -935,7 +947,7 @@ function ShoppingView({
             size="sm"
             variant="outline"
             disabled={loading || !items || items.length === 0}
-            onClick={() => printShoppingList({ weekStart, items: items! })}
+            onClick={() => printShoppingList({ weekStart: selectedWeekStart, items: items! })}
           >
             <Printer className="mr-2 h-4 w-4" /> Stampa
           </Button>
@@ -998,7 +1010,7 @@ function ShoppingView({
             <AlertDialogAction
               onClick={async () => {
                 try {
-                  await onClear();
+                  await onClear(selectedWeekStart);
                   setItems(null);
                   toast.success("Lista svuotata.");
                 } catch (e) { toast.error((e as Error).message); }
