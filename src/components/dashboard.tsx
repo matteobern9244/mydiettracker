@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
-import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw, LogOut } from "lucide-react";
+import { Upload, Target, Activity, Droplets, FileText, Trash2, Download, Pencil, RefreshCw, LogOut, UtensilsCrossed } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -190,6 +191,12 @@ export function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="rounded-full">
+              <Link to="/diet">
+                <UtensilsCrossed className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Dieta</span>
+              </Link>
+            </Button>
             <Button onClick={() => setUploadOpen(true)} className="rounded-full shadow-[var(--shadow-soft)]">
               <Upload className="mr-2 h-4 w-4" />
               <span className="hidden sm:inline">Carica referto</span>

@@ -126,3 +126,16 @@ CREATE POLICY "visits_insert_own"
 ```
 
 Lo stesso pattern è applicato a tutte le tabelle utente.
+
+## Sezione Dieta
+
+Le tabelle introdotte per la sezione Dieta seguono lo stesso pattern (RLS per utente, no FK ad `auth.users`, `created_at`/`updated_at` con default).
+
+| Tabella | Note specifiche |
+|---|---|
+| `diet_plans` | `general_guidelines jsonb`, `meal_options jsonb`. Indice unico parziale: `CREATE UNIQUE INDEX diet_plans_one_active_per_user ON public.diet_plans(user_id) WHERE is_active = true;` |
+| `diet_weekly_schedule` | `day_of_week smallint (0–6)`, `meal_slot text` (`breakfast`, `snack_morning`, `lunch`, `snack_afternoon`, `dinner`), `details jsonb` per metadati liberi. |
+| `diet_meal_logs` | `(user_id, log_date, meal_slot)` chiave logica per upsert; `consumed boolean default true`. |
+| `diet_shopping_lists` | `items jsonb` con array `{name, qty, unit, category, checked}`; chiave logica `(user_id, plan_id, week_start)`. |
+
+Tutte hanno policy `select/insert/update/delete` con `user_id = auth.uid()`.

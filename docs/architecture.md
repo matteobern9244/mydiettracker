@@ -95,3 +95,13 @@ Vedi [`ai-extraction.md`](./ai-extraction.md) per il prompt e lo schema di outpu
 - `staleTime: 30s` di default per le query (vedi `getRouter` in `src/router.tsx`).
 - Modello AI veloce (`flash-lite`) e timeout 90 s.
 - Le pagine pesanti (dashboard) caricano i dati con un singolo `getDashboardData` server function: una sola network round-trip.
+
+## Sezione Dieta
+
+La sezione Dieta riusa l'architettura dell'app:
+
+- Server functions in `src/lib/diet.functions.ts`, parser/AI in `src/lib/diet-extraction.server.ts`.
+- Estrazione AI con `google/gemini-2.5-flash` via Lovable AI Gateway, structured output con tool calling.
+- UI in `src/routes/_authenticated/diet.tsx` con toggle vista Settimana/Giorno e tab dedicate (calendario, opzioni pasto, indicazioni, lista della spesa).
+- Wizard di upload `src/components/diet/upload-diet-dialog.tsx` allineato al wizard dei referti (hash duplicati, polling stato, revisione manuale).
+- Vincolo "un solo piano attivo" applicato a livello DB con indice unico parziale; transizione gestita atomicamente in `confirmDietPlan`.

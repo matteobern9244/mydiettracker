@@ -48,10 +48,24 @@ App disponibile in produzione su <https://mydiettracker.lovable.app>.
 - **Insight automatici**: messaggi in linguaggio naturale generati da regole locali (zero AI), per ogni sezione.
 - **Filtri per sezione**: preset (3m, 6m, 1y, all) o range custom, persistiti negli URL search params.
 
+### Sezione Dieta
+- **Piano attivo unico**: un solo piano dietetico attivo per utente alla volta (vincolo applicato a livello DB con indice unico parziale).
+- **Upload del piano** in `.docx`, `.pdf` o `.txt` (max 10 MB) con rilevamento duplicati via SHA-256, identico al flusso referti.
+- **Estrazione AI** dedicata (`google/gemini-2.5-flash`) che struttura indicazioni generali, opzioni di pasto (alternative equivalenti) e schema settimanale (7 giorni × 5 slot: colazione, spuntino mattina, pranzo, spuntino pomeriggio, cena).
+- **Revisione manuale** dei dati estratti prima del salvataggio: l'utente può correggere obiettivo, kcal, indicazioni e pasti.
+- **Vista calendario duale**:
+  - **Settimana**: griglia 7×5 giorni × pasti (ottimale su desktop).
+  - **Giorno**: card a tutta larghezza con switch giorno (ottimale su mobile).
+  - Toggle persistente tra le due viste.
+- **Diario di aderenza**: check per ogni pasto consumato; calcolo percentuale di aderenza giornaliera/settimanale tramite `diet_meal_logs`.
+- **Lista della spesa generata** dal piano attivo: aggregazione automatica degli ingredienti dallo schema settimanale, raggruppati per categoria, con possibilità di spuntare gli articoli e aggiungere voci manuali.
+- **Indicazioni generali e opzioni pasto** consultabili in tab dedicate.
+
 ### Strumenti utente
 - Modifica del peso obiettivo direttamente dalla dashboard.
 - Toggle tema chiaro/scuro.
 - Hard reset di tutti i dati personali (con conferma).
+- PWA installabile su iOS, Android e macOS con icone e manifest dedicati.
 
 ---
 
@@ -133,6 +147,10 @@ Tutte le tabelle sono **per utente** con FK a `auth.users(id) ON DELETE CASCADE`
 | `body_composition` | Composizione corporea per visita | BMI, % grasso, massa magra/ossea, viscerale, idratazione, età metabolica |
 | `dexa_segments` | DEXA per arto/tronco | unique `(visit_id, segment)` |
 | `blood_tests` | Esami ematochimici | indipendenti dalla visita o collegati |
+| `diet_plans` | Piano dietetico | indicazioni generali, opzioni pasto, kcal target. Indice unico parziale: un solo piano attivo per utente |
+| `diet_weekly_schedule` | Schema settimanale | riga per `(plan_id, day_of_week, meal_slot)` |
+| `diet_meal_logs` | Aderenza giornaliera | check pasto consumato per data + slot |
+| `diet_shopping_lists` | Liste della spesa | items aggregati dal piano per `week_start` |
 
 **Storage**: bucket privato `referti` con policy che limitano l'accesso ai file dell'utente proprietario. Path generato come `{user_id}/{uuid}.{ext}`.
 
@@ -215,6 +233,8 @@ src/
 │   ├── section-filter.tsx     # filtro date per sezione
 │   ├── status-badge.tsx       # badge stato estrazione
 │   ├── theme-toggle.tsx
+│   ├── diet/
+│   │   └── upload-diet-dialog.tsx # wizard upload piano dietetico
 │   └── ui/                    # shadcn primitives
 ├── hooks/
 │   ├── use-auth.tsx           # AuthProvider + signIn/signOut
@@ -224,17 +244,20 @@ src/
 │   ├── lovable/               # wrapper SDK Cloud
 │   └── supabase/              # client browser/server + middleware
 ├── lib/
-│   ├── dashboard.functions.ts # tutte le server functions
-│   ├── extraction.server.ts   # parser docx/doc/pdf + AI gateway
+│   ├── dashboard.functions.ts # server functions dashboard
+│   ├── extraction.server.ts   # parser docx/doc/pdf + AI gateway referti
+│   ├── diet.functions.ts      # server functions sezione Dieta
+│   ├── diet-extraction.server.ts # estrazione AI piano dietetico
 │   ├── insights.ts            # regole per gli insight
 │   ├── server-call.ts         # withAuth wrapper
 │   ├── types.ts               # tipi condivisi
 │   └── utils.ts
 ├── routes/
-│   ├── __root.tsx             # shell HTML, providers, SEO base
+│   ├── __root.tsx             # shell HTML, providers, SEO base, manifest PWA
 │   ├── login.tsx              # login Google
 │   ├── _authenticated.tsx     # guard: redirect → /login se anon
-│   └── _authenticated/index.tsx # dashboard con search params Zod
+│   ├── _authenticated/index.tsx # dashboard
+│   └── _authenticated/diet.tsx  # sezione Dieta (calendario + spesa + diario)
 ├── router.tsx                 # createRouter + ErrorBoundary chunk-aware
 └── styles.css                 # design tokens (oklch) + Tailwind v4
 supabase/
@@ -251,3 +274,4 @@ supabase/
 - [`docs/upload-flow.md`](./docs/upload-flow.md) — flusso upload + estrazione + duplicati
 - [`docs/security.md`](./docs/security.md) — modello sicurezza, privacy, mitigazioni
 - [`docs/ai-extraction.md`](./docs/ai-extraction.md) — prompt, modello, fallback
+- [`docs/diet.md`](./docs/diet.md) — sezione Dieta: schema, estrazione AI, calendario, diario, lista della spesa
