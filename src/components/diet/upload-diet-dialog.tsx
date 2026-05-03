@@ -181,11 +181,9 @@ export function UploadDietDialog({ open, onOpenChange }: { open: boolean; onOpen
           )}
 
           {step === "review" && draft && (
-            <ScrollArea className="h-full">
-              <div className="px-6 py-5">
-                <ReviewForm draft={draft} onChange={setDraft} />
-              </div>
-            </ScrollArea>
+            <div className="h-full overflow-y-auto px-6 py-5">
+              <ReviewForm draft={draft} onChange={setDraft} />
+            </div>
           )}
         </div>
 
