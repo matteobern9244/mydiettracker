@@ -76,6 +76,12 @@ const DAY_LABEL = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const DAY_LABEL_LONG = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 
 function isoDate(d: Date): string { return d.toISOString().slice(0, 10); }
+function parseIsoDateLocal(value: string | undefined, fallbackDate: Date): Date {
+  if (!value) return fallbackDate;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return fallbackDate;
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
 function startOfWeek(d: Date): Date {
   const dt = new Date(d);
   const day = (dt.getDay() + 6) % 7;
@@ -102,7 +108,7 @@ function DietPage() {
   const view = search.view ?? (isMobile ? "day" : "week");
   const tab = search.tab;
   const today = useMemo(() => new Date(), []);
-  const currentDate = search.date ? new Date(search.date) : today;
+  const currentDate = parseIsoDateLocal(search.date, today);
   const weekStart = startOfWeek(currentDate);
 
   const [uploadOpen, setUploadOpen] = useState(false);
