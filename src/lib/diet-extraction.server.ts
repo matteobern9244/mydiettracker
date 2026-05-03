@@ -6,10 +6,12 @@ import type { ExtractionInput } from "@/lib/extraction.server";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 // Modello pro per gestire schemi grandi (35 celle + decine di opzioni + ricette)
 // senza troncare la risposta. Fallback automatico a flash su 429/timeout.
-const MODEL_PRIMARY = "google/gemini-2.5-pro";
-const MODEL_FALLBACK = "google/gemini-3-flash-preview";
-const AI_TIMEOUT_MS = 240_000;
-const MAX_TOKENS = 16000;
+// flash è ~2x più veloce di pro e l'AI Gateway taglia upstream a ~120s.
+// Pro restava regolarmente in timeout: usiamo flash come primario.
+const MODEL_PRIMARY = "google/gemini-2.5-flash";
+const MODEL_FALLBACK = "google/gemini-2.5-pro";
+const AI_TIMEOUT_MS = 180_000;
+const MAX_TOKENS = 24000;
 
 const MEAL_SLOT_ENUM = ["breakfast", "mid_morning", "lunch", "afternoon", "dinner"] as const;
 
