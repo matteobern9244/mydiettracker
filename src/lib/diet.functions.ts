@@ -567,3 +567,109 @@ export const deleteActiveDietPlan = createServerFn({ method: "POST" })
     await supabase.from("diet_plans").delete().eq("user_id", userId).eq("is_active", true);
     return { ok: true };
   });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7) Aggiorna una singola cella dello schema settimanale
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const updateScheduleCell = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { planId: string; dayOfWeek: number; mealSlot: MealSlot; description: string }) => {
+    const parsed = z
+      .object({
+        planId: uuidSchema,
+        dayOfWeek: z.number().int().min(1).max(7),
+        mealSlot: z.enum(MEAL_SLOTS),
+        description: z.string().max(4000),
+      })
+      .safeParse(input);
+    if (!parsed.success) throw new Error("Parametri cella non validi");
+    return parsed.data;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { planId, dayOfWeek, mealSlot, description } = data;
+
+    if (!description.trim()) {
+      await supabase
+        .from("diet_weekly_schedule")
+        .delete()
+        .eq("user_id", userId)
+        .eq("plan_id", planId)
+        .eq("day_of_week", dayOfWeek)
+        .eq("meal_slot", mealSlot);
+      return { ok: true };
+    }
+    const { error } = await supabase
+      .from("diet_weekly_schedule")
+      .upsert(
+        {
+          user_id: userId,
+          plan_id: planId,
+          day_of_week: dayOfWeek,
+          meal_slot: mealSlot,
+          description,
+          details: {} as never,
+        } as never,
+        { onConflict: "plan_id,day_of_week,meal_slot" },
+      );
+    if (error) throw safeError("Impossibile aggiornare la cella.", error.message);
+    return { ok: true };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8) Svuota lista della spesa per la settimana
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const clearShoppingList = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { weekStart: string }) => {
+    const parsed = z.object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(input);
+    if (!parsed.success) throw new Error("Data non valida");
+    return parsed.data;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await supabase
+      .from("diet_shopping_lists")
+      .delete()
+      .eq("user_id", userId)
+      .eq("week_start", data.weekStart);
+    return { ok: true };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9) Reset completo dei dati Dieta (piani, schedule, log, spesa, documenti)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const resetDietData = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    // Trova documenti dieta per cancellarli da storage
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("id, storage_path")
+      .eq("user_id", userId)
+      .like("storage_path", `${userId}/diet/%`);
+
+    const dietDocIds = (docs ?? []).map((d) => (d as { id: string }).id);
+    const dietDocPaths = (docs ?? []).map((d) => (d as { storage_path: string }).storage_path);
+
+    // Elimina in ordine (FK manuali): logs, shopping, schedule, plans
+    await supabase.from("diet_meal_logs").delete().eq("user_id", userId);
+    await supabase.from("diet_shopping_lists").delete().eq("user_id", userId);
+    await supabase.from("diet_weekly_schedule").delete().eq("user_id", userId);
+    await supabase.from("diet_plans").delete().eq("user_id", userId);
+
+    if (dietDocIds.length > 0) {
+      await supabase.from("documents").delete().in("id", dietDocIds);
+    }
+    if (dietDocPaths.length > 0) {
+      await supabase.storage.from("referti").remove(dietDocPaths).catch(() => undefined);
+    }
+
+    return { ok: true, removedDocs: dietDocIds.length };
+  });
+
