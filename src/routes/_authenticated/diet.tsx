@@ -861,27 +861,30 @@ function GuidelinesView({ guidelines }: { guidelines: GuidelineItem[] }) {
 // Shopping
 // ─────────────────────────────────────────────────────────────────────────────
 function ShoppingView({
-  weekStart, onGenerate, onLoad, onSave, onClear, onPrev, onNext,
+  weekStart, onGenerate, onLoad, onSave, onClear,
 }: {
   weekStart: string;
-  onGenerate: () => Promise<{ items: ShoppingItem[] }>;
-  onLoad: () => Promise<{ items: ShoppingItem[] | null }>;
-  onSave: (items: ShoppingItem[]) => Promise<{ ok: boolean }>;
-  onClear: () => Promise<{ ok: boolean }>;
-  onPrev: () => void;
-  onNext: () => void;
+  onGenerate: (weekStart: string) => Promise<{ items: ShoppingItem[] }>;
+  onLoad: (weekStart: string) => Promise<{ items: ShoppingItem[] | null }>;
+  onSave: (weekStart: string, items: ShoppingItem[]) => Promise<{ ok: boolean }>;
+  onClear: (weekStart: string) => Promise<{ ok: boolean }>;
 }) {
+  const [selectedWeekStart, setSelectedWeekStart] = useState(weekStart);
   const [items, setItems] = useState<ShoppingItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
+    setSelectedWeekStart(weekStart);
+  }, [weekStart]);
+
+  useEffect(() => {
     setLoading(true);
     setItems(null);
-    onLoad().then((r) => { setItems(r.items); setLoading(false); }).catch(() => setLoading(false));
+    onLoad(selectedWeekStart).then((r) => { setItems(r.items); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStart]);
+  }, [selectedWeekStart]);
 
   const grouped = useMemo(() => {
     if (!items) return {};
@@ -895,7 +898,7 @@ function ShoppingView({
 
   const update = (newItems: ShoppingItem[]) => {
     setItems(newItems);
-    onSave(newItems).catch((e) => toast.error((e as Error).message));
+    onSave(selectedWeekStart, newItems).catch((e) => toast.error((e as Error).message));
   };
 
   return (
