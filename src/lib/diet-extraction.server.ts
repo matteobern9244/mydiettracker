@@ -4,10 +4,12 @@
 import type { ExtractionInput } from "@/lib/extraction.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-// gemini-3-flash-preview è il default più veloce e riduce i timeout upstream
-// del gateway su schemi corposi come questo (piano + 35 celle settimanali + opzioni).
-const MODEL = "google/gemini-3-flash-preview";
-const AI_TIMEOUT_MS = 180_000;
+// Modello pro per gestire schemi grandi (35 celle + decine di opzioni + ricette)
+// senza troncare la risposta. Fallback automatico a flash su 429/timeout.
+const MODEL_PRIMARY = "google/gemini-2.5-pro";
+const MODEL_FALLBACK = "google/gemini-3-flash-preview";
+const AI_TIMEOUT_MS = 240_000;
+const MAX_TOKENS = 16000;
 
 const MEAL_SLOT_ENUM = ["breakfast", "mid_morning", "lunch", "afternoon", "dinner"] as const;
 
