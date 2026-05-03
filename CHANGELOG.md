@@ -8,10 +8,23 @@ Il formato segue [Keep a Changelog](https://keepachangelog.com/it/1.1.0/) e il v
 
 ## [Unreleased]
 
+### Aggiunto
+- **Sezione Dieta** completa accessibile da `/diet`:
+  - Nuove tabelle `diet_plans`, `diet_weekly_schedule`, `diet_meal_logs`, `diet_shopping_lists` con RLS per utente.
+  - Vincolo "un solo piano attivo per utente" tramite indice unico parziale `WHERE is_active = true`.
+  - Pipeline di estrazione AI dedicata (`google/gemini-2.5-flash`) per piani dietetici in `.docx`/`.pdf`/`.txt` con structured output (indicazioni generali, opzioni pasto, schema settimanale 7×5).
+  - Wizard upload con SHA-256, rilevamento duplicati e revisione manuale prima del salvataggio.
+  - Vista calendario duale (settimana / giorno) con toggle.
+  - Diario di aderenza per pasto e calcolo percentuale.
+  - Generatore di lista della spesa aggregata per categoria, con check item e voci manuali.
+- Link "Dieta" nell'header della dashboard.
+- Icone PWA (favicon, apple-touch-icon, icone 192/512 e maskable) e `manifest.webmanifest` allineati al logo.
+
 ### Documentazione
 - README completamente riscritto con panoramica, stack, architettura, flussi utente e sicurezza.
 - Aggiunto CHANGELOG strutturato.
 - Aggiunta cartella `docs/` con: `architecture.md`, `database.md`, `upload-flow.md`, `security.md`, `ai-extraction.md`.
+- Aggiunto `docs/diet.md` che descrive schema, estrazione AI, viste calendario, diario e lista della spesa.
 
 ---
 
