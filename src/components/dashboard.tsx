@@ -12,6 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UploadDialog } from "@/components/upload-dialog";
 import { StatusBadge } from "@/components/status-badge";
@@ -27,6 +31,7 @@ import {
   hardResetAllData,
   processExtraction,
   getExtractionStatus,
+  deleteDocument,
 } from "@/lib/dashboard.functions";
 import { withAuth } from "@/lib/server-call";
 import { useAuth } from "@/hooks/use-auth";
@@ -603,7 +608,9 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const getDocUrl = withAuth(useServerFn(getDocumentUrl));
   const processFn = withAuth(useServerFn(processExtraction));
   const statusFn = withAuth(useServerFn(getExtractionStatus));
+  const deleteFn = withAuth(useServerFn(deleteDocument));
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [cooldowns, setCooldowns] = useState<Record<string, number>>(() => readCooldowns());
 
@@ -736,6 +743,20 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteFn({ data: { documentId: id } });
+      toast.success("Documento eliminato.");
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["diet"] });
+    } catch (e) {
+      toast.error((e as Error).message || "Eliminazione non riuscita.");
+    } finally {
+      setDeletingId((cur) => (cur === id ? null : cur));
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -816,6 +837,37 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                     Vai ai risultati
                   </Button>
                 )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={deletingId === d.id || d.extraction_status === "processing"}
+                      title="Elimina documento"
+                      aria-label="Elimina documento"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Eliminare il documento?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Verrà rimosso "{d.original_name}" insieme ai dati estratti collegati
+                        (visite, esami, eventuale piano dieta). L'azione non è reversibile.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annulla</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => handleDelete(d.id)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Elimina
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           );
