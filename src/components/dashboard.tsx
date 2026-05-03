@@ -27,6 +27,7 @@ import {
   hardResetAllData,
   processExtraction,
   getExtractionStatus,
+  deleteDocument,
 } from "@/lib/dashboard.functions";
 import { withAuth } from "@/lib/server-call";
 import { useAuth } from "@/hooks/use-auth";
