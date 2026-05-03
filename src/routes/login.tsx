@@ -13,7 +13,7 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
   head: () => ({
     meta: [
-      { title: "Accedi · Il mio percorso dietologico" },
+      { title: "Accedi · My Diet Tracker" },
       { name: "description", content: "Accedi con il tuo account Google per accedere alla tua dashboard personale." },
     ],
   }),
