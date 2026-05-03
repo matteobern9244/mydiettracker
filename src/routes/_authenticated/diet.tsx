@@ -969,24 +969,21 @@ function ShoppingView({
                   {list.map((it, i) => {
                     const globalIdx = items.indexOf(it);
                     return (
-                      <li key={i} className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={it.checked}
-                          onCheckedChange={(c) => {
-                            const next = [...items];
-                            next[globalIdx] = { ...it, checked: !!c };
-                            update(next);
-                          }}
-                        />
-                        <span className={`flex-1 ${it.checked ? "line-through text-muted-foreground" : ""}`}>{it.name}</span>
-                        {it.quantity && <Badge variant="outline" className="text-[10px] shrink-0">{it.quantity}</Badge>}
-                        <Button
-                          size="icon" variant="ghost" className="h-6 w-6 shrink-0"
-                          onClick={() => update(items.filter((_, k) => k !== globalIdx))}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </li>
+                      <ShoppingItemRow
+                        key={i}
+                        item={it}
+                        onToggle={(checked) => {
+                          const next = [...items];
+                          next[globalIdx] = { ...it, checked };
+                          update(next);
+                        }}
+                        onSaveEdit={(name, quantity) => {
+                          const next = [...items];
+                          next[globalIdx] = { ...it, name, quantity };
+                          update(next);
+                        }}
+                        onDelete={() => update(items.filter((_, k) => k !== globalIdx))}
+                      />
                     );
                   })}
                 </ul>
