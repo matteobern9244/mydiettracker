@@ -75,7 +75,12 @@ const SLOT_LABEL_SHORT: Record<MealSlot, string> = {
 const DAY_LABEL = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
 const DAY_LABEL_LONG = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 
-function isoDate(d: Date): string { return d.toISOString().slice(0, 10); }
+function isoDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 function parseIsoDateLocal(value: string | undefined, fallbackDate: Date): Date {
   if (!value) return fallbackDate;
   const [year, month, day] = value.split("-").map(Number);
