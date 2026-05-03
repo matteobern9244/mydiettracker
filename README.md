@@ -48,10 +48,24 @@ App disponibile in produzione su <https://mydiettracker.lovable.app>.
 - **Insight automatici**: messaggi in linguaggio naturale generati da regole locali (zero AI), per ogni sezione.
 - **Filtri per sezione**: preset (3m, 6m, 1y, all) o range custom, persistiti negli URL search params.
 
+### Sezione Dieta
+- **Piano attivo unico**: un solo piano dietetico attivo per utente alla volta (vincolo applicato a livello DB con indice unico parziale).
+- **Upload del piano** in `.docx`, `.pdf` o `.txt` (max 10 MB) con rilevamento duplicati via SHA-256, identico al flusso referti.
+- **Estrazione AI** dedicata (`google/gemini-2.5-flash`) che struttura indicazioni generali, opzioni di pasto (alternative equivalenti) e schema settimanale (7 giorni × 5 slot: colazione, spuntino mattina, pranzo, spuntino pomeriggio, cena).
+- **Revisione manuale** dei dati estratti prima del salvataggio: l'utente può correggere obiettivo, kcal, indicazioni e pasti.
+- **Vista calendario duale**:
+  - **Settimana**: griglia 7×5 giorni × pasti (ottimale su desktop).
+  - **Giorno**: card a tutta larghezza con switch giorno (ottimale su mobile).
+  - Toggle persistente tra le due viste.
+- **Diario di aderenza**: check per ogni pasto consumato; calcolo percentuale di aderenza giornaliera/settimanale tramite `diet_meal_logs`.
+- **Lista della spesa generata** dal piano attivo: aggregazione automatica degli ingredienti dallo schema settimanale, raggruppati per categoria, con possibilità di spuntare gli articoli e aggiungere voci manuali.
+- **Indicazioni generali e opzioni pasto** consultabili in tab dedicate.
+
 ### Strumenti utente
 - Modifica del peso obiettivo direttamente dalla dashboard.
 - Toggle tema chiaro/scuro.
 - Hard reset di tutti i dati personali (con conferma).
+- PWA installabile su iOS, Android e macOS con icone e manifest dedicati.
 
 ---
 
