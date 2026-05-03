@@ -10,10 +10,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Il mio percorso dietologico" },
+      { title: "My Diet Tracker" },
       { name: "description", content: "Dashboard personale per il monitoraggio dei progressi dietologici: peso, composizione corporea, esami." },
-      { property: "og:title", content: "Il mio percorso dietologico" },
-      { name: "twitter:title", content: "Il mio percorso dietologico" },
+      { property: "og:title", content: "My Diet Tracker" },
+      { name: "twitter:title", content: "My Diet Tracker" },
       { property: "og:description", content: "Dashboard personale per il monitoraggio dei progressi dietologici: peso, composizione corporea, esami." },
       { name: "twitter:description", content: "Dashboard personale per il monitoraggio dei progressi dietologici: peso, composizione corporea, esami." },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9b05bcbb-744d-4f3f-bcbc-8c4943855e20/id-preview-fc34bc35--3bde3398-9e8f-4fc5-8664-63aefc1058e1.lovable.app-1777233500573.png" },
