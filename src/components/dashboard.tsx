@@ -12,6 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UploadDialog } from "@/components/upload-dialog";
 import { StatusBadge } from "@/components/status-badge";
