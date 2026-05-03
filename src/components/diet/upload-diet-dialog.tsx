@@ -181,11 +181,9 @@ export function UploadDietDialog({ open, onOpenChange }: { open: boolean; onOpen
           )}
 
           {step === "review" && draft && (
-            <ScrollArea className="h-full">
-              <div className="px-6 py-5">
-                <ReviewForm draft={draft} onChange={setDraft} />
-              </div>
-            </ScrollArea>
+            <div className="h-full overflow-y-auto px-6 py-5">
+              <ReviewForm draft={draft} onChange={setDraft} />
+            </div>
           )}
         </div>
 
@@ -271,18 +269,12 @@ function ReviewForm({ draft, onChange }: { draft: DietPlanDraft; onChange: (d: D
         </div>
 
         <Tabs value={activeDay} onValueChange={setActiveDay} className="w-full">
-          <TabsList className="grid grid-cols-7 w-full h-auto">
-            {DAYS.map((d) => {
-              const filled = SLOTS.filter((s) =>
-                draft.weekly_schedule.some((w) => w.day_of_week === d.value && w.meal_slot === s && (w.description ?? "").trim().length > 0)
-              ).length;
-              return (
-                <TabsTrigger key={d.value} value={String(d.value)} className="flex flex-col gap-0.5 py-2">
-                  <span className="text-xs font-medium">{d.short}</span>
-                  <span className="text-[10px] text-muted-foreground">{filled}/5</span>
-                </TabsTrigger>
-              );
-            })}
+          <TabsList className="grid grid-cols-7 w-full">
+            {DAYS.map((d) => (
+              <TabsTrigger key={d.value} value={String(d.value)}>
+                {d.short}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
           {DAYS.map((d) => (
