@@ -608,7 +608,9 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
   const getDocUrl = withAuth(useServerFn(getDocumentUrl));
   const processFn = withAuth(useServerFn(processExtraction));
   const statusFn = withAuth(useServerFn(getExtractionStatus));
+  const deleteFn = withAuth(useServerFn(deleteDocument));
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [cooldowns, setCooldowns] = useState<Record<string, number>>(() => readCooldowns());
 
