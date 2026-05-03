@@ -524,6 +524,61 @@ export const getDocumentUrl = createServerFn({ method: "POST" })
     return { url: signed.signedUrl, name: doc.original_name };
   });
 
+// 6b) Cancella un documento (e dati collegati: visita, piano dieta, schedule)
+export const deleteDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { documentId: string }) => {
+    const parsed = z.object({ documentId: uuidSchema }).safeParse(input);
+    if (!parsed.success) throw new Error("ID documento non valido");
+    return parsed.data;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { documentId } = data;
+
+    const { data: doc } = await supabase
+      .from("documents")
+      .select("storage_path, user_id")
+      .eq("id", documentId)
+      .single();
+    if (!doc || doc.user_id !== userId) throw new Error("Documento non trovato");
+
+    // Piani dieta collegati → schedule e logs a cascata
+    const { data: plans } = await supabase
+      .from("diet_plans")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("document_id", documentId);
+    const planIds = (plans ?? []).map((p) => p.id as string);
+    if (planIds.length) {
+      await supabase.from("diet_meal_logs").delete().in("plan_id", planIds);
+      await supabase.from("diet_weekly_schedule").delete().in("plan_id", planIds);
+      await supabase.from("diet_shopping_lists").delete().in("plan_id", planIds);
+      await supabase.from("diet_plans").delete().in("id", planIds);
+    }
+
+    // Visite e dati clinici collegati
+    const { data: vis } = await supabase
+      .from("visits")
+      .select("id")
+      .eq("document_id", documentId);
+    const visitIds = (vis ?? []).map((v) => v.id as string);
+    if (visitIds.length) {
+      await supabase.from("blood_tests").delete().in("visit_id", visitIds);
+      await supabase.from("dexa_segments").delete().in("visit_id", visitIds);
+      await supabase.from("body_composition").delete().in("visit_id", visitIds);
+      await supabase.from("circumferences").delete().in("visit_id", visitIds);
+      await supabase.from("visits").delete().in("id", visitIds);
+    }
+
+    if (doc.storage_path) {
+      await supabase.storage.from("referti").remove([doc.storage_path]).catch(() => undefined);
+    }
+    await supabase.from("documents").delete().eq("id", documentId);
+
+    return { ok: true };
+  });
+
 // 7) Hard reset: cancella TUTTI i dati DELL'UTENTE LOGGATO
 export const hardResetAllData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
