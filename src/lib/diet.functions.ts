@@ -130,34 +130,55 @@ export const uploadDietDocument = createServerFn({ method: "POST" })
     const buffer = await file.arrayBuffer();
     const contentHash = await sha256Hex(buffer);
 
-    // Upload bucket referti
-    const ts = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = `${userId}/diet/${ts}_${safeName}`;
-    const upRes = await supabase.storage.from("referti").upload(path, buffer, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-    if (upRes.error) throw safeError("Impossibile salvare il file. Riprova.", upRes.error.message);
-
-    const { data: docRow, error: docErr } = await supabase
+    // Se esiste già un documento con stesso hash per questo utente, riusalo
+    // (tipicamente un upload precedente fallito o ancora pending).
+    const { data: existing } = await supabase
       .from("documents")
-      .insert({
-        user_id: userId,
-        original_name: file.name,
-        storage_path: path,
-        size_bytes: file.size,
-        mime_type: file.type || null,
-        extraction_status: "processing",
-        content_hash: contentHash,
-      } as never)
-      .select("id")
-      .single();
-    if (docErr || !docRow) {
-      await supabase.storage.from("referti").remove([path]).catch(() => undefined);
-      throw safeError("Impossibile registrare il documento.", docErr?.message);
+      .select("id, storage_path, extraction_status")
+      .eq("user_id", userId)
+      .eq("content_hash", contentHash)
+      .maybeSingle();
+
+    let documentId: string;
+    let path: string;
+
+    if (existing) {
+      documentId = existing.id as string;
+      path = existing.storage_path as string;
+      await supabase
+        .from("documents")
+        .update({ extraction_status: "processing", extraction_error: null } as never)
+        .eq("id", documentId);
+    } else {
+      // Upload bucket referti
+      const ts = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      path = `${userId}/diet/${ts}_${safeName}`;
+      const upRes = await supabase.storage.from("referti").upload(path, buffer, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+      if (upRes.error) throw safeError("Impossibile salvare il file. Riprova.", upRes.error.message);
+
+      const { data: docRow, error: docErr } = await supabase
+        .from("documents")
+        .insert({
+          user_id: userId,
+          original_name: file.name,
+          storage_path: path,
+          size_bytes: file.size,
+          mime_type: file.type || null,
+          extraction_status: "processing",
+          content_hash: contentHash,
+        } as never)
+        .select("id")
+        .single();
+      if (docErr || !docRow) {
+        await supabase.storage.from("referti").remove([path]).catch(() => undefined);
+        throw safeError("Impossibile registrare il documento.", docErr?.message);
+      }
+      documentId = docRow.id as string;
     }
-    const documentId = docRow.id as string;
 
     // Estrazione AI inline
     try {
