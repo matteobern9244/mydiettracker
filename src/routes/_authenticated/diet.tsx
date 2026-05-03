@@ -868,6 +868,7 @@ function ShoppingView({
 
   useEffect(() => {
     setLoading(true);
+    setItems(null);
     onLoad().then((r) => { setItems(r.items); setLoading(false); }).catch(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
