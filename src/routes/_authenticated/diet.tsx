@@ -53,7 +53,7 @@ export const Route = createFileRoute("/_authenticated/diet")({
   validateSearch: zodValidator(dietSearchSchema),
   component: DietPage,
   head: () => ({
-    meta: [{ title: "Dieta · Il mio percorso" }, { name: "description", content: "Piano alimentare in stile calendario." }],
+    meta: [{ title: "Dieta · My Diet Tracker" }, { name: "description", content: "Piano alimentare in stile calendario." }],
   }),
 });
 
