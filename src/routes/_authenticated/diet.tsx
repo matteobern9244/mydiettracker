@@ -7,8 +7,9 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Activity, Upload, ArrowLeft, ChevronLeft, ChevronRight, BookOpen, ListChecks,
   ShoppingCart, CalendarDays, Loader2, Trash2, Check, RefreshCw, GripVertical,
-  AlertTriangle, Eraser, Pencil,
+  AlertTriangle, Eraser, Pencil, Printer,
 } from "lucide-react";
+import { printShoppingList } from "@/lib/print-shopping";
 import { toast } from "sonner";
 import {
   DndContext, type DragEndEvent, DragOverlay, type DragStartEvent,
@@ -930,6 +931,14 @@ function ShoppingView({
               <Eraser className="mr-2 h-4 w-4" /> Svuota lista
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={loading || !items || items.length === 0}
+            onClick={() => printShoppingList({ weekStart, items: items! })}
+          >
+            <Printer className="mr-2 h-4 w-4" /> Stampa
+          </Button>
         </div>
       </CardHeader>
       <CardContent>

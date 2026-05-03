@@ -1,26 +1,42 @@
-# Fix grafica PWA/mobile dashboard + frecce Lista della spesa
+# Stampa Lista della Spesa in PDF (anteprima A4 verticale, B/N)
 
-## Problemi rilevati
+## Obiettivo
+Aggiungere un pulsante "Stampa" nella vista Spesa che apra l'anteprima di stampa di un PDF A4 verticale con la lista della settimana selezionata, ottimizzato per stampa in bianco e nero, con elenco puntato (no checkbox). Il PDF non deve essere salvato sul dispositivo: deve aprirsi in una nuova scheda con il dialog di stampa nativo.
 
-1. **Header dashboard in overflow su mobile/PWA**: il titolo "My Diet Tracker", il sottotitolo e i bottoni "Dieta" + "Carica" causano un overflow orizzontale (vedi screenshot: il logo e parte del contenuto vengono "tagliati" a sinistra). Causa: padding `px-4`, due bottoni con testo+icona sempre visibili, max-width fisso sul sottotitolo.
-2. **Frecce ◀ ▶ in "Lista della spesa" non scorrono settimana**: visivamente cliccabili ma non avanzano la settimana di riferimento. Causa: `setDate(addDays(weekStart, ±7))` aggiorna `search.date` con `navigate({ search: ... })` ma manca `replace: true`/`from`, e il `useEffect([weekStart])` riceve la stessa stringa quando non ricalcolata. Inoltre l'`onPrev`/`onNext` lavora sull'oggetto `weekStart` (Date) ma la `ShoppingView` riceve la stringa: l'header mostra la nuova settimana ma `useEffect` non riparte perché l'`isoDate(weekStart)` resta uguale fino a re-render del padre (race con il re-render React Router).
+## Approccio tecnico
+Generazione lato client con `jsPDF` (già adatto a edge/Worker, niente server). Apertura in nuova tab via `window.open(blobUrl)` + `iframe.contentWindow.print()` come fallback. La stessa data URL si può aprire direttamente: la maggior parte dei browser desktop/mobile/PWA mostra il PDF e permette stampa o salvataggio dall'utente — senza forzare download.
 
-## Cambiamenti
+Strategia "anteprima di stampa" universale:
+1. Genero il PDF con `jsPDF` in memoria.
+2. Creo un `Blob` `application/pdf` e un object URL.
+3. Apro l'URL in `window.open(url, "_blank")` — il browser mostra l'anteprima PDF nativa con bottone Stampa. Funziona su Chrome/Safari/Firefox desktop, Safari iOS (apre in viewer), Chrome Android.
+4. Per PWA standalone iOS dove `window.open` può essere bloccato, fallback: appendere `<iframe>` nascosto con `src=blobUrl`, attendere `onload` e chiamare `iframe.contentWindow.print()`.
 
-### `src/components/dashboard.tsx` (header responsive)
-- Wrappo `<div>` root con `overflow-x-hidden` per impedire overflow PWA su iOS.
-- Ridotto padding mobile a `px-3` (header e main).
-- Rimosso `max-w-[180px]` rigido sul sottotitolo: uso `flex-1 min-w-0` + `truncate` su titolo/sottotitolo.
-- Bottoni "Dieta" e "Carica" diventano icon-only su mobile (`size="icon"`), full width da `sm:` con label.
-- Logo `shrink-0` per non collassare.
-- Riduco gap mobile (`gap-1`) tra azioni.
+## Dipendenze
+- `jspdf` (≈50KB gz, edge-safe, no native deps).
 
-### `src/routes/_authenticated/diet.tsx` (frecce spesa)
-- `setDate` aggiunge `replace: true` per evitare history spam.
-- In `<ShoppingView>` passo direttamente i callback con la **nuova data calcolata fuori** e uso `from: Route.fullPath` su `navigate` per garantire il rerender.
-- Cambio `onPrev/onNext` per usare `setDate(addDays(currentDate, ±7))` invece di `weekStart` così la dipendenza `weekStart` cambia anche quando si era a metà settimana.
-- Nel componente `ShoppingView`, sostituisco il `useEffect([weekStart])` con un effetto che resetta `items=null` PRIMA del fetch per mostrare lo spinner ad ogni cambio settimana (feedback visivo immediato che il click ha effetto).
+## File modificati
+
+### `src/lib/print-shopping.ts` (nuovo)
+- `printShoppingList({ weekStart, items })`: costruisce il PDF A4 portrait, font Helvetica nero su bianco, header con titolo "Lista della spesa" + data settimana, raggruppamento per categoria, ogni riga = "• Nome — quantità", paginazione automatica, footer con numero pagina.
+- Apre l'anteprima: prova `window.open(url)`; se `null` (popup bloccato/PWA), monta iframe nascosto e invoca `print()`.
+
+### `src/routes/_authenticated/diet.tsx`
+- Aggiungo icona `Printer` agli import lucide.
+- In `ShoppingView` aggiungo bottone "Stampa" accanto a "Svuota lista":
+  - `disabled` quando `loading || !items || items.length === 0`.
+  - `onClick`: chiama `printShoppingList({ weekStart, items })`.
+
+## Layout PDF (B/N)
+- Pagina A4 (210×297 mm), margini 18mm.
+- Titolo "Lista della spesa" 18pt bold.
+- Sottotitolo "Settimana del <data lunga in italiano>" 11pt.
+- Linea orizzontale 0.5pt.
+- Per ogni categoria: heading 12pt bold maiuscolo, poi righe 11pt con bullet "•" + nome + (se quantità) " — <quantità>" in corsivo.
+- Spaziatura riga 6mm; gap categoria 4mm.
+- Footer "Pagina N/M" centrato 9pt grigio scuro.
+- Nessun colore: solo nero (`setTextColor(0,0,0)`). Niente sfondi.
 
 ## Note
-
-Nessuna modifica al backend. Solo CSS responsive + navigation routing.
+- `useServerFn` non usato: tutto client.
+- Filename suggerito al browser: `lista-spesa-YYYY-MM-DD.pdf` (impostato via `Blob` + nome nel link, comunque l'utente decide se stampare o salvare dall'anteprima).
