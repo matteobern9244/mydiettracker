@@ -837,6 +837,37 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
                     Vai ai risultati
                   </Button>
                 )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={deletingId === d.id || d.extraction_status === "processing"}
+                      title="Elimina documento"
+                      aria-label="Elimina documento"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Eliminare il documento?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Verrà rimosso "{d.original_name}" insieme ai dati estratti collegati
+                        (visite, esami, eventuale piano dieta). L'azione non è reversibile.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annulla</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => handleDelete(d.id)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Elimina
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           );
