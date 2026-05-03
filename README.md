@@ -233,6 +233,8 @@ src/
 │   ├── section-filter.tsx     # filtro date per sezione
 │   ├── status-badge.tsx       # badge stato estrazione
 │   ├── theme-toggle.tsx
+│   ├── diet/
+│   │   └── upload-diet-dialog.tsx # wizard upload piano dietetico
 │   └── ui/                    # shadcn primitives
 ├── hooks/
 │   ├── use-auth.tsx           # AuthProvider + signIn/signOut
@@ -242,17 +244,20 @@ src/
 │   ├── lovable/               # wrapper SDK Cloud
 │   └── supabase/              # client browser/server + middleware
 ├── lib/
-│   ├── dashboard.functions.ts # tutte le server functions
-│   ├── extraction.server.ts   # parser docx/doc/pdf + AI gateway
+│   ├── dashboard.functions.ts # server functions dashboard
+│   ├── extraction.server.ts   # parser docx/doc/pdf + AI gateway referti
+│   ├── diet.functions.ts      # server functions sezione Dieta
+│   ├── diet-extraction.server.ts # estrazione AI piano dietetico
 │   ├── insights.ts            # regole per gli insight
 │   ├── server-call.ts         # withAuth wrapper
 │   ├── types.ts               # tipi condivisi
 │   └── utils.ts
 ├── routes/
-│   ├── __root.tsx             # shell HTML, providers, SEO base
+│   ├── __root.tsx             # shell HTML, providers, SEO base, manifest PWA
 │   ├── login.tsx              # login Google
 │   ├── _authenticated.tsx     # guard: redirect → /login se anon
-│   └── _authenticated/index.tsx # dashboard con search params Zod
+│   ├── _authenticated/index.tsx # dashboard
+│   └── _authenticated/diet.tsx  # sezione Dieta (calendario + spesa + diario)
 ├── router.tsx                 # createRouter + ErrorBoundary chunk-aware
 └── styles.css                 # design tokens (oklch) + Tailwind v4
 supabase/
