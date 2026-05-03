@@ -352,10 +352,10 @@ function DietPage() {
             <TabsContent value="shopping" className="mt-4">
               <ShoppingView
                 weekStart={isoDate(weekStart)}
-                onGenerate={(targetWeekStart) => genShopFn({ data: { weekStart: targetWeekStart } })}
-                onLoad={(targetWeekStart) => getShopFn({ data: { weekStart: targetWeekStart } })}
-                onSave={(targetWeekStart, items) => updShopFn({ data: { weekStart: targetWeekStart, items } })}
-                onClear={(targetWeekStart) => clearShopFn({ data: { weekStart: targetWeekStart } })}
+                onGenerate={(targetWeekStart: string) => genShopFn({ data: { weekStart: targetWeekStart } })}
+                onLoad={(targetWeekStart: string) => getShopFn({ data: { weekStart: targetWeekStart } })}
+                onSave={(targetWeekStart: string, items: ShoppingItem[]) => updShopFn({ data: { weekStart: targetWeekStart, items } })}
+                onClear={(targetWeekStart: string) => clearShopFn({ data: { weekStart: targetWeekStart } })}
               />
             </TabsContent>
           </Tabs>
