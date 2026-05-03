@@ -147,6 +147,10 @@ Tutte le tabelle sono **per utente** con FK a `auth.users(id) ON DELETE CASCADE`
 | `body_composition` | Composizione corporea per visita | BMI, % grasso, massa magra/ossea, viscerale, idratazione, età metabolica |
 | `dexa_segments` | DEXA per arto/tronco | unique `(visit_id, segment)` |
 | `blood_tests` | Esami ematochimici | indipendenti dalla visita o collegati |
+| `diet_plans` | Piano dietetico | indicazioni generali, opzioni pasto, kcal target. Indice unico parziale: un solo piano attivo per utente |
+| `diet_weekly_schedule` | Schema settimanale | riga per `(plan_id, day_of_week, meal_slot)` |
+| `diet_meal_logs` | Aderenza giornaliera | check pasto consumato per data + slot |
+| `diet_shopping_lists` | Liste della spesa | items aggregati dal piano per `week_start` |
 
 **Storage**: bucket privato `referti` con policy che limitano l'accesso ai file dell'utente proprietario. Path generato come `{user_id}/{uuid}.{ext}`.
 
