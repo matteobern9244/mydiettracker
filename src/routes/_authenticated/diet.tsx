@@ -1036,6 +1036,74 @@ function AddItemForm({ onAdd }: { onAdd: (name: string) => void }) {
   );
 }
 
+function ShoppingItemRow({
+  item, onToggle, onSaveEdit, onDelete,
+}: {
+  item: ShoppingItem;
+  onToggle: (checked: boolean) => void;
+  onSaveEdit: (name: string, quantity: string | null) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(item.name);
+  const [qty, setQty] = useState(item.quantity ?? "");
+
+  useEffect(() => {
+    if (!editing) {
+      setName(item.name);
+      setQty(item.quantity ?? "");
+    }
+  }, [item.name, item.quantity, editing]);
+
+  const commit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) { setEditing(false); setName(item.name); setQty(item.quantity ?? ""); return; }
+    const q = qty.trim();
+    onSaveEdit(trimmed.slice(0, 200), q ? q.slice(0, 100) : null);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <li className="flex items-center gap-2 text-sm">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") setEditing(false); }}
+          className="h-8 flex-1"
+          maxLength={200}
+          autoFocus
+          placeholder="Nome"
+        />
+        <Input
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") setEditing(false); }}
+          className="h-8 w-24"
+          maxLength={100}
+          placeholder="Qtà"
+        />
+        <Button size="sm" variant="default" className="h-8" onClick={commit}>Salva</Button>
+        <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditing(false)}>Annulla</Button>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center gap-2 text-sm">
+      <Checkbox checked={item.checked} onCheckedChange={(c) => onToggle(!!c)} />
+      <span className={`flex-1 ${item.checked ? "line-through text-muted-foreground" : ""}`}>{item.name}</span>
+      {item.quantity && <Badge variant="outline" className="text-[10px] shrink-0">{item.quantity}</Badge>}
+      <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setEditing(true)} aria-label="Modifica voce">
+        <Pencil className="h-3 w-3" />
+      </Button>
+      <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={onDelete} aria-label="Elimina voce">
+        <Trash2 className="h-3 w-3" />
+      </Button>
+    </li>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reset full diet data (with explicit type-to-confirm)
 // ─────────────────────────────────────────────────────────────────────────────
