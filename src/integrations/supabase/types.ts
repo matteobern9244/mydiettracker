@@ -220,6 +220,174 @@ export type Database = {
           },
         ]
       }
+      diet_meal_logs: {
+        Row: {
+          consumed: boolean
+          created_at: string
+          id: string
+          log_date: string
+          meal_slot: string
+          note: string | null
+          plan_id: string | null
+          user_id: string
+        }
+        Insert: {
+          consumed?: boolean
+          created_at?: string
+          id?: string
+          log_date: string
+          meal_slot: string
+          note?: string | null
+          plan_id?: string | null
+          user_id: string
+        }
+        Update: {
+          consumed?: boolean
+          created_at?: string
+          id?: string
+          log_date?: string
+          meal_slot?: string
+          note?: string | null
+          plan_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diet_meal_logs_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "diet_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diet_plans: {
+        Row: {
+          created_at: string
+          document_id: string | null
+          general_guidelines: Json
+          id: string
+          is_active: boolean
+          kcal_target: number | null
+          meal_options: Json
+          objective: string | null
+          professional_name: string | null
+          start_date: string | null
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id?: string | null
+          general_guidelines?: Json
+          id?: string
+          is_active?: boolean
+          kcal_target?: number | null
+          meal_options?: Json
+          objective?: string | null
+          professional_name?: string | null
+          start_date?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string | null
+          general_guidelines?: Json
+          id?: string
+          is_active?: boolean
+          kcal_target?: number | null
+          meal_options?: Json
+          objective?: string | null
+          professional_name?: string | null
+          start_date?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      diet_shopping_lists: {
+        Row: {
+          created_at: string
+          id: string
+          items: Json
+          plan_id: string | null
+          updated_at: string
+          user_id: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items?: Json
+          plan_id?: string | null
+          updated_at?: string
+          user_id: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items?: Json
+          plan_id?: string | null
+          updated_at?: string
+          user_id?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diet_shopping_lists_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "diet_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      diet_weekly_schedule: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          description: string | null
+          details: Json
+          id: string
+          meal_slot: string
+          plan_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          description?: string | null
+          details?: Json
+          id?: string
+          meal_slot: string
+          plan_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          description?: string | null
+          details?: Json
+          id?: string
+          meal_slot?: string
+          plan_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diet_weekly_schedule_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "diet_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           content_hash: string | null
