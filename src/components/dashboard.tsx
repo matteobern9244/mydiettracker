@@ -189,7 +189,7 @@ export function Dashboard() {
               <Activity className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-semibold leading-none truncate">Il mio percorso</h1>
+              <h1 className="text-base font-semibold leading-none truncate">My Diet Tracker</h1>
               <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px] sm:max-w-none">
                 {profile?.full_name ?? user?.email ?? "Profilo"}
               </p>
