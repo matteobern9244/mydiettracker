@@ -51,46 +51,46 @@ export interface DietPlanDraft {
 const uuidSchema = z.string().uuid();
 
 const guidelineSchema = z.object({
-  topic: z.string().max(200),
-  text: z.string().max(4000),
+  topic: z.string().max(300),
+  text: z.string().max(8000),
 });
 
 const weeklyEntrySchema = z.object({
   day_of_week: z.number().int().min(1).max(7),
   meal_slot: z.enum(MEAL_SLOTS),
-  description: z.string().max(2000),
+  description: z.string().max(4000),
 });
 
 const mealOptionsSchema = z.object({
-  breakfast_sweet: z.array(z.string().max(2000)).max(50),
-  breakfast_savory: z.array(z.string().max(2000)).max(50),
-  snacks: z.array(z.string().max(2000)).max(50),
-  first_courses: z.array(z.string().max(2000)).max(100),
-  second_courses_meat: z.array(z.string().max(2000)).max(50),
-  second_courses_fish: z.array(z.string().max(2000)).max(50),
-  second_courses_eggs_cheese: z.array(z.string().max(2000)).max(50),
-  sides: z.array(z.string().max(2000)).max(50),
-  bread_equivalents: z.array(z.string().max(500)).max(50),
-  cereal_equivalents: z.array(z.string().max(500)).max(50),
+  breakfast_sweet: z.array(z.string().max(4000)).max(200),
+  breakfast_savory: z.array(z.string().max(4000)).max(200),
+  snacks: z.array(z.string().max(4000)).max(200),
+  first_courses: z.array(z.string().max(4000)).max(200),
+  second_courses_meat: z.array(z.string().max(4000)).max(200),
+  second_courses_fish: z.array(z.string().max(4000)).max(200),
+  second_courses_eggs_cheese: z.array(z.string().max(4000)).max(200),
+  sides: z.array(z.string().max(4000)).max(200),
+  bread_equivalents: z.array(z.string().max(2000)).max(200),
+  cereal_equivalents: z.array(z.string().max(2000)).max(200),
   recipes: z
     .array(
       z.object({
-        name: z.string().max(200),
-        ingredients: z.array(z.string().max(500)).max(50),
-        steps: z.string().max(5000).nullable(),
+        name: z.string().max(300),
+        ingredients: z.array(z.string().max(1000)).max(100),
+        steps: z.string().max(10000).nullable(),
       }),
     )
-    .max(50),
-  frequencies: z.array(z.string().max(500)).max(30),
+    .max(100),
+  frequencies: z.array(z.string().max(1000)).max(60),
 });
 
 const dietPlanDraftSchema = z.object({
-  title: z.string().max(200).nullable(),
-  objective: z.string().max(500).nullable(),
-  professional_name: z.string().max(200).nullable(),
+  title: z.string().max(300).nullable(),
+  objective: z.string().max(1000).nullable(),
+  professional_name: z.string().max(300).nullable(),
   kcal_target: z.number().int().min(500).max(6000).nullable(),
   start_date: z.string().max(20).nullable(),
-  general_guidelines: z.array(guidelineSchema).max(100),
+  general_guidelines: z.array(guidelineSchema).max(200),
   weekly_schedule: z.array(weeklyEntrySchema).max(100),
   meal_options: mealOptionsSchema,
 });
@@ -567,3 +567,109 @@ export const deleteActiveDietPlan = createServerFn({ method: "POST" })
     await supabase.from("diet_plans").delete().eq("user_id", userId).eq("is_active", true);
     return { ok: true };
   });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7) Aggiorna una singola cella dello schema settimanale
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const updateScheduleCell = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { planId: string; dayOfWeek: number; mealSlot: MealSlot; description: string }) => {
+    const parsed = z
+      .object({
+        planId: uuidSchema,
+        dayOfWeek: z.number().int().min(1).max(7),
+        mealSlot: z.enum(MEAL_SLOTS),
+        description: z.string().max(4000),
+      })
+      .safeParse(input);
+    if (!parsed.success) throw new Error("Parametri cella non validi");
+    return parsed.data;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { planId, dayOfWeek, mealSlot, description } = data;
+
+    if (!description.trim()) {
+      await supabase
+        .from("diet_weekly_schedule")
+        .delete()
+        .eq("user_id", userId)
+        .eq("plan_id", planId)
+        .eq("day_of_week", dayOfWeek)
+        .eq("meal_slot", mealSlot);
+      return { ok: true };
+    }
+    const { error } = await supabase
+      .from("diet_weekly_schedule")
+      .upsert(
+        {
+          user_id: userId,
+          plan_id: planId,
+          day_of_week: dayOfWeek,
+          meal_slot: mealSlot,
+          description,
+          details: {} as never,
+        } as never,
+        { onConflict: "plan_id,day_of_week,meal_slot" },
+      );
+    if (error) throw safeError("Impossibile aggiornare la cella.", error.message);
+    return { ok: true };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8) Svuota lista della spesa per la settimana
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const clearShoppingList = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { weekStart: string }) => {
+    const parsed = z.object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(input);
+    if (!parsed.success) throw new Error("Data non valida");
+    return parsed.data;
+  })
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await supabase
+      .from("diet_shopping_lists")
+      .delete()
+      .eq("user_id", userId)
+      .eq("week_start", data.weekStart);
+    return { ok: true };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9) Reset completo dei dati Dieta (piani, schedule, log, spesa, documenti)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const resetDietData = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    // Trova documenti dieta per cancellarli da storage
+    const { data: docs } = await supabase
+      .from("documents")
+      .select("id, storage_path")
+      .eq("user_id", userId)
+      .like("storage_path", `${userId}/diet/%`);
+
+    const dietDocIds = (docs ?? []).map((d) => (d as { id: string }).id);
+    const dietDocPaths = (docs ?? []).map((d) => (d as { storage_path: string }).storage_path);
+
+    // Elimina in ordine (FK manuali): logs, shopping, schedule, plans
+    await supabase.from("diet_meal_logs").delete().eq("user_id", userId);
+    await supabase.from("diet_shopping_lists").delete().eq("user_id", userId);
+    await supabase.from("diet_weekly_schedule").delete().eq("user_id", userId);
+    await supabase.from("diet_plans").delete().eq("user_id", userId);
+
+    if (dietDocIds.length > 0) {
+      await supabase.from("documents").delete().in("id", dietDocIds);
+    }
+    if (dietDocPaths.length > 0) {
+      await supabase.storage.from("referti").remove(dietDocPaths).catch(() => undefined);
+    }
+
+    return { ok: true, removedDocs: dietDocIds.length };
+  });
+
