@@ -122,93 +122,93 @@ export function UploadDietDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-5xl w-[95vw] max-h-[92vh] p-0 flex flex-col gap-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b">
-          <DialogTitle>
-            {step === "upload" && "Carica il tuo piano alimentare"}
-            {step === "processing" && "Estrazione in corso…"}
-            {step === "review" && "Conferma il piano estratto"}
-            {step === "saving" && "Salvataggio…"}
-            {step === "error" && "Estrazione non riuscita"}
-          </DialogTitle>
-          <DialogDescription>
-            {step === "upload" && "File .docx, .pdf, .doc o .txt fino a 20MB. L'AI estrae meta, schema settimanale, opzioni e indicazioni."}
-            {step === "processing" && "Può richiedere fino a 1–2 minuti."}
-            {step === "review" && "Verifica e modifica i campi prima di salvare. Il piano precedente sarà archiviato."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="!max-w-5xl w-[95vw] !p-0 !gap-0 !block h-[92vh] overflow-hidden">
+        <div className="flex flex-col h-full">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0 space-y-1.5 text-left">
+            <DialogTitle>
+              {step === "upload" && "Carica il tuo piano alimentare"}
+              {step === "processing" && "Estrazione in corso…"}
+              {step === "review" && "Conferma il piano estratto"}
+              {step === "saving" && "Salvataggio…"}
+              {step === "error" && "Estrazione non riuscita"}
+            </DialogTitle>
+            <DialogDescription>
+              {step === "upload" && "File .docx, .pdf, .doc o .txt fino a 20MB. L'AI estrae meta, schema settimanale, opzioni e indicazioni."}
+              {step === "processing" && "Può richiedere fino a 1–2 minuti."}
+              {step === "review" && "Verifica e modifica i campi prima di salvare. Il piano precedente sarà archiviato."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {step === "upload" && (
-            <div className="px-6 py-6">
-              <label htmlFor="diet-file" className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-muted/30 px-6 py-12 text-center cursor-pointer hover:border-primary hover:bg-accent/50 transition-colors">
-                <Upload className="h-10 w-10 text-primary" />
-                <div>
-                  <p className="font-medium">Clicca per selezionare il documento</p>
-                  <p className="text-sm text-muted-foreground">.doc, .docx, .pdf, .txt — max 20MB</p>
-                </div>
-                {file && (
-                  <div className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm">
-                    <FileText className="h-4 w-4 text-primary" /><span className="font-medium">{file.name}</span>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {step === "upload" && (
+              <div className="px-6 py-6">
+                <label htmlFor="diet-file" className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-muted/30 px-6 py-12 text-center cursor-pointer hover:border-primary hover:bg-accent/50 transition-colors">
+                  <Upload className="h-10 w-10 text-primary" />
+                  <div>
+                    <p className="font-medium">Clicca per selezionare il documento</p>
+                    <p className="text-sm text-muted-foreground">.doc, .docx, .pdf, .txt — max 20MB</p>
                   </div>
-                )}
-                <input id="diet-file" type="file" className="hidden"
-                  accept=".doc,.docx,.pdf,.txt"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              </label>
-            </div>
-          )}
+                  {file && (
+                    <div className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm">
+                      <FileText className="h-4 w-4 text-primary" /><span className="font-medium">{file.name}</span>
+                    </div>
+                  )}
+                  <input id="diet-file" type="file" className="hidden"
+                    accept=".doc,.docx,.pdf,.txt"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                </label>
+              </div>
+            )}
 
-          {(step === "processing" || step === "saving") && (
-            <div className="flex flex-col items-center gap-4 py-16">
-              <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                {step === "processing" ? "L'AI sta leggendo il piano…" : "Sto salvando…"}
-              </p>
-            </div>
-          )}
+            {(step === "processing" || step === "saving") && (
+              <div className="flex flex-col items-center gap-4 py-16">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">
+                  {step === "processing" ? "L'AI sta leggendo il piano…" : "Sto salvando…"}
+                </p>
+              </div>
+            )}
 
-          {step === "error" && (
-            <div className="px-6 py-6">
-              <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium text-destructive">Estrazione fallita</p>
-                  <p className="text-muted-foreground break-words">{errorMsg}</p>
+            {step === "error" && (
+              <div className="px-6 py-6">
+                <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+                  <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-destructive">Estrazione fallita</p>
+                    <p className="text-muted-foreground break-words">{errorMsg}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {step === "review" && draft && (
-            <div className="h-full overflow-y-auto px-6 py-5">
-              <ReviewForm draft={draft} onChange={setDraft} />
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="px-6 py-4 border-t bg-muted/20 sm:justify-between gap-2">
-          {step === "review" && draft ? (
-            <Summary draft={draft} />
-          ) : <div />}
-          <div className="flex items-center gap-2">
-            {step === "upload" && (
-              <>
-                <Button variant="ghost" onClick={() => handleClose(false)}>Annulla</Button>
-                <Button disabled={!file} onClick={() => file && uploadMut.mutate(file)}>Analizza con AI</Button>
-              </>
             )}
-            {step === "review" && (
-              <>
-                <Button variant="ghost" onClick={() => handleClose(false)}>Annulla</Button>
-                <Button onClick={() => saveMut.mutate()}>
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> Conferma e salva
-                </Button>
-              </>
+
+            {step === "review" && draft && (
+              <div className="px-6 py-5">
+                <ReviewForm draft={draft} onChange={setDraft} />
+              </div>
             )}
-            {step === "error" && <Button variant="ghost" onClick={() => handleClose(false)}>Chiudi</Button>}
           </div>
-        </DialogFooter>
+
+          <div className="px-6 py-4 border-t bg-muted/20 shrink-0 flex items-center justify-between gap-2 flex-wrap">
+            {step === "review" && draft ? <Summary draft={draft} /> : <div />}
+            <div className="flex items-center gap-2 ml-auto">
+              {step === "upload" && (
+                <>
+                  <Button variant="ghost" onClick={() => handleClose(false)}>Annulla</Button>
+                  <Button disabled={!file} onClick={() => file && uploadMut.mutate(file)}>Analizza con AI</Button>
+                </>
+              )}
+              {step === "review" && (
+                <>
+                  <Button variant="ghost" onClick={() => handleClose(false)}>Annulla</Button>
+                  <Button onClick={() => saveMut.mutate()}>
+                    <CheckCircle2 className="mr-2 h-4 w-4" /> Conferma e salva
+                  </Button>
+                </>
+              )}
+              {step === "error" && <Button variant="ghost" onClick={() => handleClose(false)}>Chiudi</Button>}
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

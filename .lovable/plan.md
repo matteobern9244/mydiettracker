@@ -1,63 +1,30 @@
-# Ridisegno UI: "Conferma il piano estratto"
+# Fix scroll del dialog "Conferma piano estratto"
 
-## Problema attuale
-Il dialog mostra lo schema settimanale come tabella 7×5 dentro un modale stretto (`max-w-3xl`). Le celle diventano colonnine verticali con testo spezzettato lettera per lettera → illeggibile e impossibile da modificare bene.
+## Causa
+`DialogContent` di shadcn ha già `grid gap-4 p-6` di base. Le mie classi `flex flex-col` + `max-h-[92vh]` entrano in conflitto col `grid`, e il `p-6` del primitive crea padding interno che impedisce a `flex-1 min-h-0 overflow-y-auto` di calcolare correttamente l'altezza → il contenuto centrale non scrolla.
 
-## Obiettivo
-Trasformare il modale in una review leggibile, modificabile e responsive, mantenendo le stesse API server (`uploadDietDocument` / `confirmDietPlan`) e lo stesso `DietPlanDraft` — nessuna modifica DB.
+Inoltre `DialogFooter` di shadcn forza `flex-col-reverse sm:flex-row` con classi che possono interferire.
 
-## Modifiche (solo `src/components/diet/upload-diet-dialog.tsx`)
+## Fix in `src/components/diet/upload-diet-dialog.tsx`
 
-### 1. Container del dialog
-- Allargare a `max-w-5xl`, altezza `max-h-[92vh]`, body in `flex-col` con `ScrollArea` interna.
-- Header sticky in alto, footer sticky in basso.
+1. **Forzare reset di `DialogContent`** con classi importanti:
+   - `!max-w-5xl w-[95vw] !p-0 !gap-0 !block h-[92vh] overflow-hidden`
+   - Annulla `grid`, padding e gap del primitive.
 
-### 2. Sezione "Metadati" (in alto, invariata logica)
-- Stessa griglia 2 colonne (Titolo, Calorie, Obiettivo, Dietologa, Data emissione) ma con spaziature più generose e label leggibili.
+2. **Wrapper interno esplicito** `<div className="flex flex-col h-full">` con tre figli:
+   - **Header**: `shrink-0` (no scroll)
+   - **Body**: `flex-1 min-h-0 overflow-y-auto` ← garantisce lo scroll nativo
+   - **Footer**: `shrink-0` come `<div>` invece di `DialogFooter` (per evitare le sue classi flex-reverse)
 
-### 3. Sezione "Schema settimanale" — nuovo layout
-Sostituire la tabella 7×5 con un sistema **a Tab per giorno**:
+3. **Body sempre scrollabile**: tutti gli step (upload/processing/review/error) renderizzano dentro il body scrollabile.
 
-```text
-[ Lun | Mar | Mer | Gio | Ven | Sab | Dom ]   ← Tabs
-┌─────────────────────────────────────────┐
-│ Colazione           [Textarea ampia]    │
-│ Spuntino mattina    [Textarea ampia]    │
-│ Pranzo              [Textarea ampia]    │
-│ Spuntino pomeriggio [Textarea ampia]    │
-│ Cena                [Textarea ampia]    │
-└─────────────────────────────────────────┘
-```
+4. **Form review**: rimuovere `h-full` dal wrapper interno (il body padre già scrolla); il `ReviewForm` resta com'è.
 
-- Usare `Tabs` di shadcn (già presenti nel progetto) con 7 trigger (`Lun…Dom`).
-- Default selezionato: giorno corrente.
-- Ogni `TabsContent` mostra 5 card con label (Colazione, Spuntino mattina, Pranzo, Spuntino pomeriggio, Cena) e una `Textarea` larga (`w-full`, `min-h-24`, `rows={3}`, `resize-y`).
-- Mostrare contatore caratteri / placeholder "Nessun pasto indicato" quando vuoto.
-- Pulsanti utili in cima al pannello del giorno:
-  - "Copia da giorno…" (menu dropdown con gli altri 6 giorni) per duplicare rapidamente.
-  - "Svuota giorno".
-
-### 4. Logica di update
-Mantenere la stessa logica `findIndex(day_of_week, meal_slot)` con `setField("weekly_schedule", next)`; cambia solo il layout di rendering, non lo shape dei dati.
-
-### 5. Sezione "Indicazioni & opzioni" (collassabile)
-- Sostituire il piccolo paragrafo riassuntivo con due `Accordion` (collassati di default):
-  - **Indicazioni generali** → lista modificabile (textarea per item, bottone aggiungi/rimuovi).
-  - **Opzioni pasto** → per ogni meal_slot, lista di alternative (input + add/remove).
-- Update via `setField("general_guidelines", …)` e `setField("meal_options", …)`.
-
-### 6. Footer
-- Riga riepilogo a sinistra: "X celle compilate · Y indicazioni · Z opzioni".
-- Bottoni "Annulla" / "Conferma e salva" a destra invariati.
-
-### 7. Stati upload / processing / error
-- Rimangono come oggi, solo allineati al nuovo width con padding maggiore.
-
-## Dettagli tecnici
-- Nessun nuovo package: usare `@/components/ui/tabs`, `accordion`, `card`, `dropdown-menu` già presenti.
-- Nessuna modifica a `src/lib/diet.functions.ts`, `diet-extraction.server.ts`, schema DB o tipi `DietPlanDraft`.
-- Mantenere typesafe: stessi tipi, stesse mutation, stesso flow.
+5. **Verifica usabilità review**:
+   - Tabs giorni: senza contatore "5/5" (già fatto).
+   - Textarea pasti `min-h-24 resize-y`, due colonne su desktop.
+   - Accordion indicazioni/opzioni collassati di default.
+   - Footer con summary "X/35 celle · Y indicazioni · Z opzioni" e pulsanti Annulla/Conferma sempre visibili.
 
 ## Out of scope
-- Editing avanzato della pagina `/diet` (calendario) non viene toccato.
-- Nessun cambio di estrazione AI o di prompt.
+Nessuna modifica a server functions, DB o tipi.
