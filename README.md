@@ -274,3 +274,4 @@ supabase/
 - [`docs/upload-flow.md`](./docs/upload-flow.md) — flusso upload + estrazione + duplicati
 - [`docs/security.md`](./docs/security.md) — modello sicurezza, privacy, mitigazioni
 - [`docs/ai-extraction.md`](./docs/ai-extraction.md) — prompt, modello, fallback
+- [`docs/diet.md`](./docs/diet.md) — sezione Dieta: schema, estrazione AI, calendario, diario, lista della spesa
