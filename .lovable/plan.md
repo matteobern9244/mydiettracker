@@ -1,42 +1,19 @@
-# Stampa Lista della Spesa in PDF (anteprima A4 verticale, B/N)
+## Problema
 
-## Obiettivo
-Aggiungere un pulsante "Stampa" nella vista Spesa che apra l'anteprima di stampa di un PDF A4 verticale con la lista della settimana selezionata, ottimizzato per stampa in bianco e nero, con elenco puntato (no checkbox). Il PDF non deve essere salvato sul dispositivo: deve aprirsi in una nuova scheda con il dialog di stampa nativo.
+L'hook `useTheme` (in `src/hooks/use-theme.ts`) è quello che applica la classe `.dark` al `<html>` e legge la preferenza salvata. Però viene invocato SOLO dentro il componente `ThemeToggle`, che è montato nella dashboard ma non nella pagina Dieta.
 
-## Approccio tecnico
-Generazione lato client con `jsPDF` (già adatto a edge/Worker, niente server). Apertura in nuova tab via `window.open(blobUrl)` + `iframe.contentWindow.print()` come fallback. La stessa data URL si può aprire direttamente: la maggior parte dei browser desktop/mobile/PWA mostra il PDF e permette stampa o salvataggio dall'utente — senza forzare download.
+Risultato: se apri direttamente `/diet` (anche dopo refresh in PWA o navigando senza passare dalla dashboard), la classe `.dark` non viene applicata e la pagina resta in tema chiaro indipendentemente dalla preferenza salvata.
 
-Strategia "anteprima di stampa" universale:
-1. Genero il PDF con `jsPDF` in memoria.
-2. Creo un `Blob` `application/pdf` e un object URL.
-3. Apro l'URL in `window.open(url, "_blank")` — il browser mostra l'anteprima PDF nativa con bottone Stampa. Funziona su Chrome/Safari/Firefox desktop, Safari iOS (apre in viewer), Chrome Android.
-4. Per PWA standalone iOS dove `window.open` può essere bloccato, fallback: appendere `<iframe>` nascosto con `src=blobUrl`, attendere `onload` e chiamare `iframe.contentWindow.print()`.
+## Fix
 
-## Dipendenze
-- `jspdf` (≈50KB gz, edge-safe, no native deps).
+Spostare l'inizializzazione del tema al livello del root layout così è sempre attiva, indipendentemente dalla pagina visitata.
 
-## File modificati
+### Modifiche
 
-### `src/lib/print-shopping.ts` (nuovo)
-- `printShoppingList({ weekStart, items })`: costruisce il PDF A4 portrait, font Helvetica nero su bianco, header con titolo "Lista della spesa" + data settimana, raggruppamento per categoria, ogni riga = "• Nome — quantità", paginazione automatica, footer con numero pagina.
-- Apre l'anteprima: prova `window.open(url)`; se `null` (popup bloccato/PWA), monta iframe nascosto e invoca `print()`.
+**`src/routes/__root.tsx`**
+- Importare `useTheme` da `@/hooks/use-theme`.
+- Invocarlo dentro `RootComponent` (basta `useTheme()` — l'effect interno gestisce la classe `.dark` su `document.documentElement`).
 
-### `src/routes/_authenticated/diet.tsx`
-- Aggiungo icona `Printer` agli import lucide.
-- In `ShoppingView` aggiungo bottone "Stampa" accanto a "Svuota lista":
-  - `disabled` quando `loading || !items || items.length === 0`.
-  - `onClick`: chiama `printShoppingList({ weekStart, items })`.
+Questo garantisce che ogni pagina (Dieta, Dashboard, ecc.) rispetti la preferenza tema salvata in `localStorage` o quella di sistema.
 
-## Layout PDF (B/N)
-- Pagina A4 (210×297 mm), margini 18mm.
-- Titolo "Lista della spesa" 18pt bold.
-- Sottotitolo "Settimana del <data lunga in italiano>" 11pt.
-- Linea orizzontale 0.5pt.
-- Per ogni categoria: heading 12pt bold maiuscolo, poi righe 11pt con bullet "•" + nome + (se quantità) " — <quantità>" in corsivo.
-- Spaziatura riga 6mm; gap categoria 4mm.
-- Footer "Pagina N/M" centrato 9pt grigio scuro.
-- Nessun colore: solo nero (`setTextColor(0,0,0)`). Niente sfondi.
-
-## Note
-- `useServerFn` non usato: tutto client.
-- Filename suggerito al browser: `lista-spesa-YYYY-MM-DD.pdf` (impostato via `Blob` + nome nel link, comunque l'utente decide se stampare o salvare dall'anteprima).
+Nessuna modifica necessaria a `diet.tsx`: usa già token semantici (`bg-background`, `bg-card`, `text-muted-foreground`, ecc.) e il gradiente `--gradient-soft` ha già la variante dark in `styles.css`.
