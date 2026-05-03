@@ -743,6 +743,20 @@ function DocumentsPanel({ documents }: { documents: DocumentRow[] }) {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteFn({ data: { documentId: id } });
+      toast.success("Documento eliminato.");
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["diet"] });
+    } catch (e) {
+      toast.error((e as Error).message || "Eliminazione non riuscita.");
+    } finally {
+      setDeletingId((cur) => (cur === id ? null : cur));
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
