@@ -51,14 +51,14 @@ export interface DietPlanDraft {
 const uuidSchema = z.string().uuid();
 
 const guidelineSchema = z.object({
-  topic: z.string().max(200),
-  text: z.string().max(4000),
+  topic: z.string().max(300),
+  text: z.string().max(8000),
 });
 
 const weeklyEntrySchema = z.object({
   day_of_week: z.number().int().min(1).max(7),
   meal_slot: z.enum(MEAL_SLOTS),
-  description: z.string().max(2000),
+  description: z.string().max(4000),
 });
 
 const mealOptionsSchema = z.object({
