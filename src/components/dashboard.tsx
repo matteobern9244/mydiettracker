@@ -181,39 +181,36 @@ export function Dashboard() {
   const wht = waist && profile?.height_cm ? waist / Number(profile.height_cm) : null;
 
   return (
-    <div className="min-h-screen bg-[image:var(--gradient-soft)]">
+    <div className="min-h-screen overflow-x-hidden bg-[image:var(--gradient-soft)]">
       <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[image:var(--gradient-primary)] text-primary-foreground shadow-[var(--shadow-soft)]">
               <Activity className="h-5 w-5" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold leading-none truncate">My Diet Tracker</h1>
-              <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px] sm:max-w-none">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm sm:text-base font-semibold leading-none truncate">My Diet Tracker</h1>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
                 {profile?.full_name ?? user?.email ?? "Profilo"}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" className="rounded-full">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <Button asChild variant="outline" size="icon" className="rounded-full sm:size-auto sm:px-4" aria-label="Dieta">
               <Link to="/diet">
-                <UtensilsCrossed className="mr-2 h-4 w-4" />
+                <UtensilsCrossed className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Dieta</span>
               </Link>
             </Button>
-            <Button onClick={() => setUploadOpen(true)} className="rounded-full shadow-[var(--shadow-soft)]">
-              <Upload className="mr-2 h-4 w-4" />
+            <Button onClick={() => setUploadOpen(true)} size="icon" className="rounded-full shadow-[var(--shadow-soft)] sm:size-auto sm:px-4" aria-label="Carica referto">
+              <Upload className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Carica referto</span>
-              <span className="sm:hidden">Carica</span>
             </Button>
             <ThemeToggle />
             <Button
               variant="ghost"
               size="icon"
               onClick={async () => {
-                // Interrompi le query attive e svuota la cache prima del logout
-                // così non parte una richiesta autenticata con token già revocato.
                 await qc.cancelQueries();
                 await signOut();
                 qc.removeQueries({ queryKey: ["dashboard"] });
@@ -229,7 +226,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-7xl space-y-6 px-3 py-6 sm:px-6">
         {visits.length === 0 ? (
           <EmptyState onUpload={() => setUploadOpen(true)} />
         ) : (
