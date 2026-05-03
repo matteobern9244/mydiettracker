@@ -908,14 +908,14 @@ function ShoppingView({
           <div className="min-w-0">
             <CardTitle className="text-sm">Lista della spesa</CardTitle>
             <CardDescription className="truncate">
-              Settimana del {new Date(weekStart).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}
+              Settimana del {parseIsoDateLocal(selectedWeekStart, new Date()).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}
             </CardDescription>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <Button size="icon" variant="outline" onClick={onPrev} aria-label="Settimana precedente">
+            <Button size="icon" variant="outline" onClick={() => setSelectedWeekStart(isoDate(addDays(parseIsoDateLocal(selectedWeekStart, new Date()), -7)))} aria-label="Settimana precedente">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="outline" onClick={onNext} aria-label="Settimana successiva">
+            <Button size="icon" variant="outline" onClick={() => setSelectedWeekStart(isoDate(addDays(parseIsoDateLocal(selectedWeekStart, new Date()), 7)))} aria-label="Settimana successiva">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -928,7 +928,7 @@ function ShoppingView({
             onClick={async () => {
               setGenerating(true);
               try {
-                const r = await onGenerate();
+                const r = await onGenerate(selectedWeekStart);
                 setItems(r.items);
                 toast.success("Lista generata dal piano settimanale");
               } catch (e) { toast.error((e as Error).message); }
@@ -947,7 +947,7 @@ function ShoppingView({
             size="sm"
             variant="outline"
             disabled={loading || !items || items.length === 0}
-            onClick={() => printShoppingList({ weekStart, items: items! })}
+            onClick={() => printShoppingList({ weekStart: selectedWeekStart, items: items! })}
           >
             <Printer className="mr-2 h-4 w-4" /> Stampa
           </Button>
@@ -1010,7 +1010,7 @@ function ShoppingView({
             <AlertDialogAction
               onClick={async () => {
                 try {
-                  await onClear();
+                  await onClear(selectedWeekStart);
                   setItems(null);
                   toast.success("Lista svuotata.");
                 } catch (e) { toast.error((e as Error).message); }
