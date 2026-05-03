@@ -204,10 +204,39 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
     font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-synthesis-weight: none;
+    font-synthesis-style: none;
   }
 
   html {
     scroll-behavior: smooth;
+  }
+
+  button, input, textarea, select {
+    font-family: inherit;
+  }
+}
+
+[data-radix-popper-content-wrapper],
+[data-sonner-toaster],
+[data-sonner-toast],
+[role="menu"],
+[role="tooltip"] {
+  font-family: var(--font-sans);
+}
+
+.recharts-text,
+.recharts-cartesian-axis-tick-value,
+.recharts-tooltip-wrapper {
+  font-family: var(--font-sans);
+}
+
+@media (display-mode: standalone) {
+  html, body, button, input, textarea, select {
+    font-family: var(--font-sans) !important;
   }
 }
